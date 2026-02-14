@@ -7,6 +7,7 @@ import { getServiceSupabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60s for processing (if platform allows)
 
 // POST: Upload and process a document
 export async function POST(request: NextRequest) {
