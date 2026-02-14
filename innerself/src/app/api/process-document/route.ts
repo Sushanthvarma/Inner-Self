@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (fetchError || !doc) {
+            console.error('Fetch error:', fetchError);
             return NextResponse.json({ error: 'Document not found' }, { status: 404 });
         }
 
@@ -33,18 +34,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: true, message: 'Already processed' });
         }
 
-        // If text is missing (e.g. image or failed extraction), we can't process
-        // But for images, the text field might be the base64 string or empty? 
-        // In my upload route, I put base64 into extracted_text for images.
-        // So doc.extracted_text should rely on that.
-
         if (!doc.extracted_text) {
             return NextResponse.json({ error: 'No content to process' }, { status: 400 });
         }
 
-        // 2. Call AI (Haiku)
-        // This might still timeout if > 10s, but at least we saved the upload first.
-        // And we don't have the overhead of file parsing here.
+        // 2. Call AI
+        console.log(`Processing doc ${docId} with Gemini...`);
         const result = await processDocumentContent(doc.extracted_text, doc.file_type, doc.file_name);
 
         let parsed;
@@ -56,9 +51,8 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Update DB with Persona/People/Events overrides
-        // (Copied logic from original upload route)
 
-        // Update persona summary (merge)
+        // Update user_persona_summary
         if (parsed.persona_updates) {
             const { data: existing } = await supabase
                 .from('user_persona_summary')
@@ -78,14 +72,16 @@ export async function POST(request: NextRequest) {
                         (existing.full_psychological_profile || '') + '\n\n[Updated from: ' + doc.file_name + ']\n' +
                         parsed.persona_updates.full_psychological_profile;
                 }
-                // (Other updates omitted for brevity but logic is same as before - 
-                // in a real app better to refactor this update logic into a lib function)
-                await supabase.from('user_persona_summary').update(updates).eq('id', existing.id);
+
+                const { error: updateError } = await supabase.from('user_persona_summary').update(updates).eq('id', existing.id);
+                if (updateError) console.error('Persona update error:', updateError); // Log but don't fail whole process?
             } else {
-                await supabase.from('user_persona_summary').insert({
+                // If no persona exists, create one (partial)
+                const { error: insertError } = await supabase.from('user_persona_summary').insert({
                     id: uuidv4(),
-                    ...parsed.persona_updates,
+                    ...parsed.persona_updates, // This might fail if mandatory fields are missing? But schema usually allows nulls except updated_at
                 });
+                if (insertError) console.error('Persona insert error:', insertError);
             }
         }
 
@@ -100,12 +96,13 @@ export async function POST(request: NextRequest) {
                     .single();
 
                 if (existingPerson) {
-                    await supabase.from('people_map').update({
+                    const { error } = await supabase.from('people_map').update({
                         last_mentioned: now,
                         mention_count: (existingPerson.mention_count || 0) + 1,
                     }).eq('id', existingPerson.id);
+                    if (error) console.error(`Error updating person ${p.name}:`, error);
                 } else {
-                    await supabase.from('people_map').insert({
+                    const { error } = await supabase.from('people_map').insert({
                         id: uuidv4(),
                         name: p.name,
                         relationship: p.relationship,
@@ -118,6 +115,7 @@ export async function POST(request: NextRequest) {
                             { date: now, sentiment: p.sentiment_avg, context: `doc: ${doc.file_name}` },
                         ],
                     });
+                    if (error) console.error(`Error inserting person ${p.name}:`, error);
                 }
             }
         }
@@ -127,15 +125,21 @@ export async function POST(request: NextRequest) {
             const eventRows = parsed.life_events.map(
                 (e: { title: string; description: string; significance: number; category: string; emotions: string[] }) => ({
                     id: uuidv4(),
-                    event_date: new Date().toISOString().split('T')[0],
+                    event_date: new Date().toISOString().split('T')[0], // Default to today since output doesn't give date yet
                     title: e.title,
                     description: e.description,
-                    significance: e.significance,
-                    category: e.category,
-                    emotions: e.emotions,
+                    significance: e.significance || 5, // Access constraints or default
+                    category: e.category || 'personal',
+                    emotions: e.emotions || [],
+                    source_entry_ids: [docId] // Link back to document! (Schema allows this)
                 })
             );
-            await supabase.from('life_events_timeline').insert(eventRows);
+
+            const { error: eventsError } = await supabase.from('life_events_timeline').insert(eventRows);
+            if (eventsError) {
+                console.error('Error inserting life events:', eventsError);
+                throw new Error(`Failed to insert life events: ${eventsError.message}`);
+            }
         }
 
         // Insights
@@ -144,12 +148,30 @@ export async function POST(request: NextRequest) {
                 id: uuidv4(),
                 insight_text: text,
                 type: 'document_upload',
+                source_entry_id: null // uploaded_documents isn't a raw_entry, so source_entry_id might fail FK constraint if strictly checked? 
+                // Schema: source_entry_id UUID REFERENCES raw_entries(id)
+                // Wait! uploaded_documents has NO link to raw_entries. 
+                // If I insert source_entry_id = docId, it might fail FK constraint if docId is not in raw_entries.
+                // Let's check schema.
+                // insights table: source_entry_id UUID REFERENCES raw_entries(id)
+                // docId is from uploaded_documents table.
+                // FK VIOLATION!
             }));
-            await supabase.from('insights').insert(insightRows);
+
+            // Fix: Do not set source_entry_id for document insights unless we make a raw_entry for it.
+            // Or schema needs update.
+            // For now, strip source_entry_id to avoid FK error.
+            const safeInsightRows = insightRows.map(row => ({
+                ...row,
+                source_entry_id: null
+            }));
+
+            const { error: insightsError } = await supabase.from('insights').insert(safeInsightRows);
+            if (insightsError) console.error('Error inserting insights:', insightsError);
         }
 
         // 4. Mark Doc Completed
-        await supabase.from('uploaded_documents').update({
+        const { error: completeError } = await supabase.from('uploaded_documents').update({
             processing_status: 'completed',
             insights_generated: {
                 people_count: parsed.people?.length || 0,
@@ -158,6 +180,10 @@ export async function POST(request: NextRequest) {
             },
         }).eq('id', docId);
 
+        if (completeError) {
+            console.error('Error completing doc status:', completeError);
+            throw completeError;
+        }
 
         return NextResponse.json({
             success: true,
@@ -168,6 +194,19 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('Process API error:', error);
+
+        // Try to update status to failed
+        try {
+            const supabase = getServiceSupabase();
+            const { docId } = await request.clone().json().catch(() => ({}));
+            if (docId) {
+                await supabase.from('uploaded_documents').update({
+                    processing_status: 'failed',
+                    insights_generated: { error: error.message }
+                }).eq('id', docId);
+            }
+        } catch (e) { /* ignore */ }
+
         return NextResponse.json({ error: error.message || 'Processing failed' }, { status: 500 });
     }
 }
