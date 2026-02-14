@@ -54,34 +54,58 @@ export default function SettingsPanel({
 
     const handleUpload = async (file: File) => {
         setUploading(true);
-        setUploadProgress(`Uploading ${file.name}...`);
+        setUploadProgress(`Uploading and extracting text...`);
 
         try {
             const formData = new FormData();
             formData.append('file', file);
 
-            setUploadProgress(`Analyzing ${file.name} with AI...`);
-
-            const res = await fetch('/api/upload', {
+            // Step 1: Upload and Extract
+            const uploadRes = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData,
             });
 
-            const data = await res.json();
+            const uploadData = await uploadRes.json();
 
-            if (data.success) {
-                setUploadProgress(
-                    `✅ Done! Found ${data.peopleFound} people, ${data.eventsFound} events, ${data.insightsGenerated} insights`
-                );
-                fetchDocuments();
+            if (!uploadData.success) {
+                setUploadProgress(`❌ Upload failed: ${uploadData.error}`);
                 setTimeout(() => setUploadProgress(''), 4000);
-            } else {
-                setUploadProgress(`❌ Error: ${data.error}`);
-                setTimeout(() => setUploadProgress(''), 4000);
+                return;
             }
+
+            // Step 2: Trigger AI Processing (if needed)
+            if (uploadData.requiresProcessing) {
+                setUploadProgress(`analyzing with AI... (this may take 10-20s)`);
+
+                const processRes = await fetch('/api/process-document', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ docId: uploadData.docId }),
+                });
+
+                const processData = await processRes.json();
+
+                if (processData.success) {
+                    setUploadProgress(
+                        `✅ Analysis Complete! Found ${processData.peopleFound} people, ${processData.eventsFound} events.`
+                    );
+                    fetchDocuments();
+                    setTimeout(() => setUploadProgress(''), 5000);
+                } else {
+                    setUploadProgress(`⚠️ Uploaded, but analysis failed: ${processData.error}`);
+                    fetchDocuments(); // Refresh list to show 'ready_for_ai' or 'failed'
+                    setTimeout(() => setUploadProgress(''), 5000);
+                }
+            } else {
+                setUploadProgress(`✅ Upload complete!`);
+                fetchDocuments();
+                setTimeout(() => setUploadProgress(''), 3000);
+            }
+
         } catch (err) {
-            console.error('Upload error:', err);
-            setUploadProgress('❌ Upload failed');
+            console.error('Upload flow error:', err);
+            setUploadProgress('❌ Unexpected error');
             setTimeout(() => setUploadProgress(''), 3000);
         } finally {
             setUploading(false);
