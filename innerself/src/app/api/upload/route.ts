@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
             id: docId,
             file_name: file.name,
             file_type: fileType,
-            processing_status: 'pending_analysis', // New status indicating ready for AI
+            processing_status: 'pending', // Compatible with existing check constraint
         });
 
         let extractedText = '';
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         // Update DB with extracted text
         await supabase.from('uploaded_documents').update({
             extracted_text: extractedText.substring(0, 50000), // Limit increased for images
-            processing_status: 'ready_for_ai', // Ready for step 2
+            processing_status: 'pending', // Ready for step 2
         }).eq('id', docId);
 
         return NextResponse.json({
