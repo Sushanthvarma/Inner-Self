@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
+import mammoth from 'mammoth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -40,12 +41,21 @@ export async function POST(request: NextRequest) {
                 const pdfData = await pdfParse(buffer);
                 extractedText = pdfData.text;
             } else if (fileType === 'docx' || fileType === 'doc') {
-                // Basic text extraction from docx (XML-based)
+                // Robust text extraction from docx using mammoth
                 const buffer = Buffer.from(await file.arrayBuffer());
-                const text = buffer.toString('utf-8');
-                extractedText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-                if (extractedText.length < 50) {
-                    extractedText = `[Document: ${file.name}] Content could not be fully extracted. File size: ${file.size} bytes.`;
+                const result = await mammoth.extractRawText({ buffer });
+                extractedText = result.value.trim();
+
+                if (result.messages.length > 0) {
+                    console.log('Mammoth messages:', result.messages);
+                }
+
+                if (!extractedText || extractedText.length < 50) {
+                    // Fallback check: if mammoth returns nothing, maybe it's an image-heavy doc?
+                    // But usually it returns text.
+                    if (!extractedText) {
+                        extractedText = `[Document: ${file.name}] Content could not be extracted (Empty).`;
+                    }
                 }
             } else if (['jpg', 'jpeg', 'png', 'webp'].includes(fileType)) {
                 // For images, we store the base64 to send to vision model later
