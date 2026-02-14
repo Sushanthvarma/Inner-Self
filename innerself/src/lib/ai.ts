@@ -20,7 +20,7 @@ function getGemini(): GoogleGenerativeAI {
 // Function to get model instance (flash is fast & free tier)
 function getModel(jsonMode = false) {
     return getGemini().getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.0-flash',
         generationConfig: {
             responseMimeType: jsonMode ? 'application/json' : 'text/plain',
             maxOutputTokens: 4000,
