@@ -1,15 +1,31 @@
+
 // ============================================================
-// INNER SELF — Claude AI Engine
+// INNER SELF — Gemini AI Engine (Migrated from Claude)
 // ============================================================
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ExtractionResult, UserPersonaSummary, AIPersona } from '@/types';
 
-let _anthropic: Anthropic | null = null;
-function getAnthropic(): Anthropic {
-    if (!_anthropic) {
-        _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+let _gemini: GoogleGenerativeAI | null = null;
+
+function getGemini(): GoogleGenerativeAI {
+    if (!_gemini) {
+        if (!process.env.GEMINI_API_KEY) {
+            throw new Error('Missing GEMINI_API_KEY in environment variables');
+        }
+        _gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     }
-    return _anthropic;
+    return _gemini;
+}
+
+// Function to get model instance (flash is fast & free tier)
+function getModel(jsonMode = false) {
+    return getGemini().getGenerativeModel({
+        model: 'gemini-1.5-flash',
+        generationConfig: {
+            responseMimeType: jsonMode ? 'application/json' : 'text/plain',
+            maxOutputTokens: 4000,
+        },
+    });
 }
 
 // ---- Silent Extractor System Prompt ----
@@ -38,7 +54,7 @@ EXTRACTION RULES:
 9. Life events: only flag genuinely significant events (new job, loss, major decision, achievement, relationship change).
 10. Tasks: only flag clearly actionable items with verbs (call X, submit Y, finish Z).
 
-You MUST respond with ONLY valid JSON matching the ExtractionResult schema. No markdown, no explanation, no preamble.
+You MUST respond with ONLY valid JSON matching the ExtractionResult schema.
 
 JSON Schema:
 {
@@ -109,23 +125,13 @@ export async function extractFromEntry(
         ? `\n\nCURRENT PERSONA SUMMARY (who Sushanth is right now):\n${personaSummary}`
         : '';
 
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        messages: [
-            {
-                role: 'user',
-                content: `${SILENT_EXTRACTOR_PROMPT}${personaBlock}${contextBlock}\n\nNEW ENTRY TO ANALYZE:\n"${rawText}"\n\nRespond with ONLY the JSON object. No markdown fences, no explanation.`,
-            },
-        ],
-    });
+    const prompt = `${SILENT_EXTRACTOR_PROMPT}${personaBlock}${contextBlock}\n\nNEW ENTRY TO ANALYZE:\n"${rawText}"`;
 
-    const text =
-        response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(true); // JSON mode
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
 
-    // Parse the JSON response, stripping any markdown fences if present
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned) as ExtractionResult;
+    return JSON.parse(text) as ExtractionResult;
 }
 
 // ---- Generate Chat Response with RAG Context ----
@@ -152,17 +158,19 @@ RULES:
 4. Be concise (2-4 sentences unless a longer response is warranted).
 5. Reference specific events/feelings from context when relevant.`;
 
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: conversationHistory.concat({
-            role: 'user',
-            content: userMessage,
-        }),
+    const model = getModel(false); // Text mode
+    // Gemini handles system instruction via API or prepending to history. 
+    // Flash 1.5 supports systemInstruction.
+    const chat = model.startChat({
+        history: conversationHistory.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+        })),
+        systemInstruction: systemPrompt,
     });
 
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const result = await chat.sendMessage(userMessage);
+    return result.response.text();
 }
 
 // ---- Generate Mirror Mode Question ----
@@ -170,13 +178,7 @@ export async function generateMirrorQuestion(
     personaSummary: string,
     recentEntries: string
 ): Promise<string> {
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        messages: [
-            {
-                role: 'user',
-                content: `You are the Mirror — Sushanth's unflinching self-truth companion.
+    const prompt = `You are the Mirror — Sushanth's unflinching self-truth companion.
 
 PERSONA SUMMARY:\n${personaSummary}
 
@@ -188,12 +190,11 @@ Generate ONE powerful question that:
 - Is specific to his current situation (not generic)
 - Cannot be answered with yes/no
 
-Respond with ONLY the question. No preamble, no explanation.`,
-            },
-        ],
-    });
+Respond with ONLY the question. No preamble, no explanation.`;
 
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(false);
+    const result = await model.generateContent(prompt);
+    return result.response.text();
 }
 
 // ---- Generate Weekly Report ----
@@ -202,13 +203,7 @@ export async function generateWeeklyReport(
     personaSummary: string,
     previousReport: string = ''
 ): Promise<string> {
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 3000,
-        messages: [
-            {
-                role: 'user',
-                content: `You are Inner Self's weekly report generator for Sushanth.
+    const prompt = `You are Inner Self's weekly report generator for Sushanth.
 
 PERSONA SUMMARY:\n${personaSummary}
 
@@ -229,13 +224,11 @@ Generate an honest weekly review in this JSON format:
   "entry_count": <number>
 }
 
-Be HONEST. Not cruel, but honest. This is his mirror, not his cheerleader.
-Respond with ONLY the JSON. No markdown fences.`,
-            },
-        ],
-    });
+Be HONEST. Not cruel, but honest. This is his mirror, not his cheerleader.`;
 
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(true); // JSON mode
+    const result = await model.generateContent(prompt);
+    return result.response.text();
 }
 
 // ---- Update Persona Summary ----
@@ -243,13 +236,7 @@ export async function updatePersonaSummary(
     currentSummary: string,
     recentEntries: string
 ): Promise<string> {
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [
-            {
-                role: 'user',
-                content: `You are Inner Self's persona architect. Your job is to maintain the god-view document that defines who Sushanth Varma is RIGHT NOW.
+    const prompt = `You are Inner Self's persona architect. Your job is to maintain the god-view document that defines who Sushanth Varma is RIGHT NOW.
 
 CURRENT PERSONA SUMMARY:\n${currentSummary || 'No existing summary. This is the first generation.'}
 
@@ -272,13 +259,11 @@ Rewrite the complete persona summary. Include:
 14. companion_preference: What style he needs right now
 15. full_psychological_profile: Comprehensive 4-6 paragraph assessment
 
-Respond with ONLY JSON matching UserPersonaSummary schema (without id and updated_at).
-No markdown fences.`,
-            },
-        ],
-    });
+Respond with ONLY JSON matching UserPersonaSummary schema (without id and updated_at).`;
 
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(true); // JSON mode
+    const result = await model.generateContent(prompt);
+    return result.response.text();
 }
 
 // ---- Process Onboarding Answers ----
@@ -289,13 +274,7 @@ export async function processOnboarding(
         .map((a, i) => `Q${i + 1}: ${a.question}\nA${i + 1}: ${a.answer}`)
         .join('\n\n');
 
-    const response = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [
-            {
-                role: 'user',
-                content: `You are Inner Self's onboarding processor for a new user named Sushanth Varma.
+    const prompt = `You are Inner Self's onboarding processor for a new user named Sushanth Varma.
 
 He just completed his Day 1 foundation conversation. Process his answers to build the initial understanding.
 
@@ -313,14 +292,11 @@ Format as:
   "people": [{"name": "", "relationship": "", "sentiment_avg": 1-10, "tags": []}],
   "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": []}],
   "insights": ["initial observations"]
-}
+}`;
 
-Respond with ONLY JSON. No markdown fences.`,
-            },
-        ],
-    });
-
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(true); // JSON mode
+    const result = await model.generateContent(prompt);
+    return result.response.text();
 }
 
 // ---- Process Uploaded Document Content ----
@@ -330,8 +306,8 @@ export async function processDocumentContent(
     fileName: string
 ): Promise<string> {
     const isImage = text.startsWith('[IMAGE:');
-
-    let messages;
+    let promptText = '';
+    let parts: any[] = [];
 
     if (isImage) {
         // Parse image data
@@ -339,21 +315,7 @@ export async function processDocumentContent(
         if (!match) throw new Error('Invalid image data');
         const [, mediaType, base64] = match;
 
-        messages = [
-            {
-                role: 'user' as const,
-                content: [
-                    {
-                        type: 'image' as const,
-                        source: {
-                            type: 'base64' as const,
-                            media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
-                            data: base64,
-                        },
-                    },
-                    {
-                        type: 'text' as const,
-                        text: `This is a personal document/image uploaded by Sushanth Varma to Inner Self (his personal AI life OS).
+        promptText = `This is a personal document/image uploaded by Sushanth Varma to Inner Self (his personal AI life OS).
                         
 File name: ${fileName}
 
@@ -377,17 +339,15 @@ Respond with ONLY JSON in this format:
   "insights": ["observations from this document"]
 }
 
-Only include fields where you found relevant information. Use empty arrays for fields with no data.
-No markdown fences.`,
-                    },
-                ],
-            },
+Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
+
+        parts = [
+            { text: promptText },
+            { inlineData: { mimeType: mediaType, data: base64 } }
         ];
+
     } else {
-        messages = [
-            {
-                role: 'user' as const,
-                content: `You are Inner Self's document analyzer for Sushanth Varma.
+        promptText = `You are Inner Self's document analyzer for Sushanth Varma.
 
 A personal document has been uploaded. Analyze it and extract all personally relevant information.
 
@@ -395,7 +355,7 @@ File name: ${fileName}
 File type: ${fileType}
 
 DOCUMENT CONTENT:
-${text.substring(0, 15000)}
+${text.substring(0, 30000)}
 
 Look for:
 - People mentioned (names, relationships, sentiments)
@@ -419,17 +379,12 @@ Respond with ONLY JSON:
   "insights": ["observations from this document"]
 }
 
-Only include fields where you found relevant information. Use empty arrays for fields with no data.
-No markdown fences.`,
-            },
-        ];
+Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
+
+        parts = [{ text: promptText }];
     }
 
-    const response = await getAnthropic().messages.create({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 4000,
-        messages,
-    });
-
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+    const model = getModel(true); // JSON mode
+    const result = await model.generateContent(parts);
+    return result.response.text();
 }
