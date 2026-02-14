@@ -148,25 +148,10 @@ export async function POST(request: NextRequest) {
                 id: uuidv4(),
                 insight_text: text,
                 type: 'document_upload',
-                source_entry_id: null // uploaded_documents isn't a raw_entry, so source_entry_id might fail FK constraint if strictly checked? 
-                // Schema: source_entry_id UUID REFERENCES raw_entries(id)
-                // Wait! uploaded_documents has NO link to raw_entries. 
-                // If I insert source_entry_id = docId, it might fail FK constraint if docId is not in raw_entries.
-                // Let's check schema.
-                // insights table: source_entry_id UUID REFERENCES raw_entries(id)
-                // docId is from uploaded_documents table.
-                // FK VIOLATION!
+                // source_entry_id omitted to avoid FK error content
             }));
 
-            // Fix: Do not set source_entry_id for document insights unless we make a raw_entry for it.
-            // Or schema needs update.
-            // For now, strip source_entry_id to avoid FK error.
-            const safeInsightRows = insightRows.map(row => ({
-                ...row,
-                source_entry_id: null
-            }));
-
-            const { error: insightsError } = await supabase.from('insights').insert(safeInsightRows);
+            const { error: insightsError } = await supabase.from('insights').insert(insightRows);
             if (insightsError) console.error('Error inserting insights:', insightsError);
         }
 
