@@ -1,0 +1,11 @@
+# IDE and tool configs
+.claude/
+.gemini/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Architecture docs (optional, remove if you want these tracked)
+*.docx
