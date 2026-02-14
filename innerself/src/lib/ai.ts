@@ -322,3 +322,114 @@ Respond with ONLY JSON. No markdown fences.`,
 
     return response.content[0].type === 'text' ? response.content[0].text : '';
 }
+
+// ---- Process Uploaded Document Content ----
+export async function processDocumentContent(
+    text: string,
+    fileType: string,
+    fileName: string
+): Promise<string> {
+    const isImage = text.startsWith('[IMAGE:');
+
+    let messages;
+
+    if (isImage) {
+        // Parse image data
+        const match = text.match(/\[IMAGE:(.*?):(.*?)\]/);
+        if (!match) throw new Error('Invalid image data');
+        const [, mediaType, base64] = match;
+
+        messages = [
+            {
+                role: 'user' as const,
+                content: [
+                    {
+                        type: 'image' as const,
+                        source: {
+                            type: 'base64' as const,
+                            media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+                            data: base64,
+                        },
+                    },
+                    {
+                        type: 'text' as const,
+                        text: `This is a personal document/image uploaded by Sushanth Varma to Inner Self (his personal AI life OS).
+                        
+File name: ${fileName}
+
+Analyze this image and extract any personally relevant information. Look for:
+- People mentioned or shown
+- Life events, achievements, milestones
+- Goals, plans, aspirations
+- Relationships, sentiments
+- Personal details, beliefs, patterns
+
+Respond with ONLY JSON in this format:
+{
+  "persona_updates": {
+    "full_psychological_profile": "new insights from this document",
+    "active_goals": [{"goal": "", "status": ""}],
+    "core_beliefs_operating": [],
+    "recurring_patterns": []
+  },
+  "people": [{"name": "", "relationship": "", "sentiment_avg": 1-10, "tags": []}],
+  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": []}],
+  "insights": ["observations from this document"]
+}
+
+Only include fields where you found relevant information. Use empty arrays for fields with no data.
+No markdown fences.`,
+                    },
+                ],
+            },
+        ];
+    } else {
+        messages = [
+            {
+                role: 'user' as const,
+                content: `You are Inner Self's document analyzer for Sushanth Varma.
+
+A personal document has been uploaded. Analyze it and extract all personally relevant information.
+
+File name: ${fileName}
+File type: ${fileType}
+
+DOCUMENT CONTENT:
+${text.substring(0, 15000)}
+
+Look for:
+- People mentioned (names, relationships, sentiments)
+- Life events, achievements, milestones
+- Goals, plans, aspirations  
+- Personal details, values, beliefs
+- Behavioral patterns, habits
+- Career/professional information
+- Health, financial, or relationship details
+
+Respond with ONLY JSON:
+{
+  "persona_updates": {
+    "full_psychological_profile": "new insights from this document",
+    "active_goals": [{"goal": "", "status": ""}],
+    "core_beliefs_operating": [],
+    "recurring_patterns": []
+  },
+  "people": [{"name": "", "relationship": "", "sentiment_avg": 1-10, "tags": []}],
+  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": []}],
+  "insights": ["observations from this document"]
+}
+
+Only include fields where you found relevant information. Use empty arrays for fields with no data.
+No markdown fences.`,
+            },
+        ];
+    }
+
+    const response = await getAnthropic().messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages,
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+}

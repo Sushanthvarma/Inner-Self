@@ -6,17 +6,20 @@ import { ONBOARDING_QUESTIONS } from '@/lib/personas';
 
 interface OnboardingProps {
     onComplete: () => void;
+    onSkip: () => void;
+    startFromQuestion?: number;
+    previousAnswers?: { question: string; answer: string }[];
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
-    const [currentQuestion, setCurrentQuestion] = useState(0);
+export default function Onboarding({ onComplete, onSkip, startFromQuestion = 0, previousAnswers = [] }: OnboardingProps) {
+    const [currentQuestion, setCurrentQuestion] = useState(startFromQuestion);
     const [answers, setAnswers] = useState<
         { question: string; answer: string }[]
-    >([]);
+    >(previousAnswers);
     const [currentAnswer, setCurrentAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [phase, setPhase] = useState<'welcome' | 'questions' | 'processing'>(
-        'welcome'
+        startFromQuestion > 0 ? 'questions' : 'welcome'
     );
 
     const phaseNames = ['Foundation', 'Foundation', 'Foundation', 'Foundation', 'Foundation',
@@ -46,6 +49,20 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
     const handleTranscript = (transcript: string) => {
         setCurrentAnswer((prev) => (prev ? prev + ' ' + transcript : transcript));
+    };
+
+    const handleSkip = async () => {
+        // Save partial answers if any, then skip
+        try {
+            await fetch('/api/onboarding', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answers }),
+            });
+        } catch (error) {
+            console.error('Skip error:', error);
+        }
+        onSkip();
     };
 
     const submitOnboarding = async (
@@ -94,6 +111,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                         onClick={() => setPhase('questions')}
                     >
                         Let&apos;s begin
+                    </button>
+                    <button
+                        className="skip-button"
+                        onClick={handleSkip}
+                    >
+                        Skip for now →
                     </button>
                 </div>
             </div>
@@ -168,6 +191,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                             : 'Complete ✓'}
                     </button>
                 </div>
+
+                <button
+                    className="skip-button"
+                    onClick={handleSkip}
+                >
+                    Skip remaining →
+                </button>
             </div>
 
             {/* Previous answers preview */}

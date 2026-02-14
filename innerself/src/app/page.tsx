@@ -8,6 +8,7 @@ import LifeView from '@/components/LifeView';
 import MirrorView from '@/components/MirrorView';
 import ChatView from '@/components/ChatView';
 import Onboarding from '@/components/Onboarding';
+import SettingsPanel from '@/components/SettingsPanel';
 import type { TabName } from '@/types';
 
 const TAB_CONFIG: { id: TabName; label: string; icon: string }[] = [
@@ -19,11 +20,19 @@ const TAB_CONFIG: { id: TabName; label: string; icon: string }[] = [
   { id: 'chat', label: 'Chat', icon: '💬' },
 ];
 
+interface OnboardingStatus {
+  completed: boolean;
+  skipped: boolean;
+  partial: boolean;
+  answeredCount: number;
+  totalQuestions: number;
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabName>('dump');
-  const [onboardingComplete, setOnboardingComplete] = useState<
-    boolean | null
-  >(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     checkOnboarding();
@@ -32,15 +41,27 @@ export default function Home() {
   const checkOnboarding = async () => {
     try {
       const res = await fetch('/api/onboarding');
-      const data = await res.json();
-      setOnboardingComplete(data.completed);
+      const data: OnboardingStatus = await res.json();
+      setOnboardingStatus(data);
+
+      // Show onboarding only if not completed AND not skipped
+      if (!data.completed && !data.skipped && !data.partial) {
+        setShowOnboarding(true);
+      }
     } catch {
-      setOnboardingComplete(false);
+      setOnboardingStatus({
+        completed: false,
+        skipped: false,
+        partial: false,
+        answeredCount: 0,
+        totalQuestions: 14,
+      });
+      setShowOnboarding(true);
     }
   };
 
   // Loading state
-  if (onboardingComplete === null) {
+  if (onboardingStatus === null) {
     return (
       <div className="app-loading">
         <div className="app-loading-content">
@@ -52,10 +73,22 @@ export default function Home() {
   }
 
   // Onboarding
-  if (!onboardingComplete) {
+  if (showOnboarding) {
     return (
       <Onboarding
-        onComplete={() => setOnboardingComplete(true)}
+        onComplete={() => {
+          setShowOnboarding(false);
+          setOnboardingStatus((prev) =>
+            prev ? { ...prev, completed: true, skipped: false } : prev
+          );
+        }}
+        onSkip={() => {
+          setShowOnboarding(false);
+          setOnboardingStatus((prev) =>
+            prev ? { ...prev, skipped: true } : prev
+          );
+        }}
+        startFromQuestion={onboardingStatus.answeredCount}
       />
     );
   }
@@ -66,7 +99,16 @@ export default function Home() {
       {/* Header */}
       <header className="app-header">
         <h1 className="app-title">Inner Self</h1>
-        <span className="app-tagline">Your Digital Witness</span>
+        <div className="header-right">
+          <span className="app-tagline">Your Digital Witness</span>
+          <button
+            className="settings-gear"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+          >
+            ⚙️
+          </button>
+        </div>
       </header>
 
       {/* Content */}
@@ -94,6 +136,17 @@ export default function Home() {
           </button>
         ))}
       </nav>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onResumeOnboarding={() => {
+          setSettingsOpen(false);
+          setShowOnboarding(true);
+        }}
+        onboardingStatus={onboardingStatus}
+      />
     </div>
   );
 }

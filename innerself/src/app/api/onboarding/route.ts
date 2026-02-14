@@ -1,13 +1,15 @@
 // ============================================================
-// INNER SELF — Onboarding API Route
+// INNER SELF — Onboarding API Route (with skip/resume support)
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
 import { processOnboarding } from '@/lib/ai';
 import { getServiceSupabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
+import { ONBOARDING_QUESTIONS } from '@/lib/personas';
 
 export const dynamic = 'force-dynamic';
 
+// POST: Submit answers (full or partial)
 export async function POST(request: NextRequest) {
     try {
         const { answers } = await request.json();
@@ -93,6 +95,19 @@ export async function POST(request: NextRequest) {
             await supabase.from('insights').insert(insightRows);
         }
 
+        // Mark onboarding as completed
+        const isComplete = answers.length >= ONBOARDING_QUESTIONS.length;
+        await supabase.from('app_config').upsert({
+            key: 'onboarding_status',
+            value: {
+                status: isComplete ? 'completed' : 'partial',
+                answered_count: answers.length,
+                total_questions: ONBOARDING_QUESTIONS.length,
+                completed_at: isComplete ? new Date().toISOString() : null,
+            },
+            updated_at: new Date().toISOString(),
+        });
+
         return NextResponse.json({
             success: true,
             message: 'Onboarding processed successfully',
@@ -109,23 +124,95 @@ export async function POST(request: NextRequest) {
     }
 }
 
+// PATCH: Skip onboarding (save any partial answers without AI processing)
+export async function PATCH(request: NextRequest) {
+    try {
+        const { answers } = await request.json().catch(() => ({ answers: [] }));
+        const supabase = getServiceSupabase();
+
+        // Save any partial answers
+        if (answers && answers.length > 0) {
+            const answerRows = answers.map(
+                (a: { question: string; answer: string }, i: number) => ({
+                    id: uuidv4(),
+                    question_number: i + 1,
+                    question_text: a.question,
+                    answer_text: a.answer,
+                })
+            );
+            await supabase.from('onboarding_answers').insert(answerRows);
+        }
+
+        // Mark as skipped
+        await supabase.from('app_config').upsert({
+            key: 'onboarding_status',
+            value: {
+                status: 'skipped',
+                answered_count: answers?.length || 0,
+                total_questions: ONBOARDING_QUESTIONS.length,
+                skipped_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+        });
+
+        return NextResponse.json({ success: true, status: 'skipped' });
+    } catch (error) {
+        console.error('Skip onboarding error:', error);
+        return NextResponse.json(
+            { error: 'Failed to skip onboarding' },
+            { status: 500 }
+        );
+    }
+}
+
 // GET: Check onboarding status
 export async function GET() {
     try {
         const supabase = getServiceSupabase();
 
-        const { data, error } = await supabase
+        // Check app_config for onboarding status
+        const { data: config } = await supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', 'onboarding_status')
+            .single();
+
+        if (config) {
+            const status = config.value as {
+                status: string;
+                answered_count: number;
+                total_questions: number;
+            };
+            return NextResponse.json({
+                completed: status.status === 'completed',
+                skipped: status.status === 'skipped',
+                partial: status.status === 'partial',
+                answeredCount: status.answered_count,
+                totalQuestions: status.total_questions,
+            });
+        }
+
+        // Fallback: check if any onboarding answers exist
+        const { data } = await supabase
             .from('onboarding_answers')
             .select('id')
             .limit(1);
 
-        if (error) throw error;
-
         return NextResponse.json({
             completed: data && data.length > 0,
+            skipped: false,
+            partial: false,
+            answeredCount: 0,
+            totalQuestions: ONBOARDING_QUESTIONS.length,
         });
     } catch (error) {
         console.error('Onboarding check error:', error);
-        return NextResponse.json({ completed: false });
+        return NextResponse.json({
+            completed: false,
+            skipped: false,
+            partial: false,
+            answeredCount: 0,
+            totalQuestions: ONBOARDING_QUESTIONS.length,
+        });
     }
 }
