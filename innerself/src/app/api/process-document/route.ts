@@ -122,6 +122,16 @@ export async function POST(request: NextRequest) {
 
         // Life Events
         if (parsed.life_events && parsed.life_events.length > 0) {
+            // Deduplicate: Delete existing events linked to this docId
+            // Note: If an event has multiple source_ids, this might be aggressive, 
+            // but for now 1 doc = 1 set of events is safer.
+            const { error: deleteError } = await supabase
+                .from('life_events_timeline')
+                .delete()
+                .contains('source_entry_ids', [docId]);
+
+            if (deleteError) console.error('Error cleaning up old events:', deleteError);
+
             const eventRows = parsed.life_events.map(
                 (e: { title: string; description: string; significance: number; category: string; emotions: string[] }) => ({
                     id: uuidv4(),
