@@ -89,7 +89,7 @@ export default function TasksView() {
                     <span className="stat pending">{pendingCount} pending</span>
                     <span className="stat done">{doneCount} done</span>
                     {staleCount > 0 && (
-                        <span className="stat stale" style={{ color: '#F97316' }}>⚠️ {staleCount} stale</span>
+                        <span className="stat stale">⚠️ {staleCount} stale</span>
                     )}
                 </div>
             </div>
@@ -100,7 +100,6 @@ export default function TasksView() {
                         key={f}
                         className={`filter-btn ${filter === f ? 'active' : ''}`}
                         onClick={() => setFilter(f)}
-                        style={f === 'stale' && staleCount > 0 ? { color: '#F97316' } : undefined}
                     >
                         {f === 'stale' ? `⚠️ Stale (${staleCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
                     </button>
@@ -109,15 +108,7 @@ export default function TasksView() {
 
             {/* Staleness Warning Banner */}
             {staleCount > 0 && filter !== 'done' && (
-                <div style={{
-                    background: 'rgba(249, 115, 22, 0.1)',
-                    border: '1px solid rgba(249, 115, 22, 0.3)',
-                    borderRadius: '8px',
-                    padding: '12px 16px',
-                    marginBottom: '12px',
-                    fontSize: '14px',
-                    color: '#FB923C',
-                }}>
+                <div className="stale-warning-banner">
                     ⚠️ {staleCount} task{staleCount > 1 ? 's have' : ' has'} been pending for over 14 days. What&apos;s blocking you?
                 </div>
             )}
@@ -162,12 +153,7 @@ export default function TasksView() {
 
                                 {/* Emotional Context */}
                                 {task.surface_emotion && task.task_status === 'pending' && (
-                                    <p style={{
-                                        fontSize: '12px',
-                                        color: '#9CA3AF',
-                                        fontStyle: 'italic',
-                                        marginTop: '4px',
-                                    }}>
+                                    <p className="task-emotion-context">
                                         Feeling: {task.surface_emotion}{task.deeper_emotion ? ` → ${task.deeper_emotion}` : ''}
                                         {task.core_need ? ` · Need: ${task.core_need}` : ''}
                                     </p>
@@ -187,20 +173,17 @@ export default function TasksView() {
                                         })}
                                     </span>
                                     {task.age_days > 0 && (
-                                        <span style={{
-                                            fontSize: '11px',
-                                            color: task.is_stale ? '#F97316' : '#6B7280',
-                                        }}>
+                                        <span className={`task-age${task.is_stale ? ' stale' : ''}`}>
                                             · {task.age_days}d ago
                                         </span>
                                     )}
                                     {task.is_stale && (
-                                        <span style={{ fontSize: '11px', color: '#F97316', fontWeight: 600 }}>
+                                        <span className="task-stale-label">
                                             · ⚠️ STALE
                                         </span>
                                     )}
                                     {task.people_mentioned?.length > 0 && (
-                                        <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                                        <span className="task-people">
                                             · {task.people_mentioned.map(p => p.name).join(', ')}
                                         </span>
                                     )}

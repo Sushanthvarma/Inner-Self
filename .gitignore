@@ -9,3 +9,5 @@ Thumbs.db
 
 # Architecture docs (optional, remove if you want these tracked)
 *.docx
+.vercel
+.env*.local

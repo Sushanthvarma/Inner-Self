@@ -343,84 +343,80 @@ export default function LifeView() {
                                 <div className="event-content">
                                     {/* Edit Modal Overlay */}
                                     {editingEventId === event.id && (
-                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                                        <div className="edit-event-overlay">
                                             <div
-                                                className="bg-[#16161F] w-full max-w-lg rounded-xl border border-gray-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+                                                className="edit-event-content"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
-                                                <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#12121A]">
+                                                <div className="edit-event-header">
                                                     <h3 className="text-lg font-semibold text-white">Edit Event</h3>
                                                     <button
                                                         onClick={() => setEditingEventId(null)}
-                                                        className="text-gray-400 hover:text-white transition-colors"
+                                                        className="edit-event-close"
                                                     >
                                                         ✕
                                                     </button>
                                                 </div>
 
-                                                <div className="p-6 flex flex-col gap-4">
-                                                    <div className="flex flex-col gap-2">
-                                                        <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Title</label>
+                                                <div className="edit-event-body">
+                                                    <div className="edit-event-field">
+                                                        <label className="edit-event-label">Title</label>
                                                         <input
                                                             type="text"
                                                             value={editForm.title}
                                                             onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                                            className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all placeholder-gray-600"
+                                                            className="edit-event-input"
                                                             placeholder="Event Title"
                                                         />
                                                     </div>
 
-                                                    <div className="flex flex-col gap-2">
-                                                        <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Description</label>
+                                                    <div className="edit-event-field">
+                                                        <label className="edit-event-label">Description</label>
                                                         <textarea
                                                             value={editForm.description}
                                                             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                                            className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all resize-none placeholder-gray-600 leading-relaxed"
+                                                            className="edit-event-textarea"
                                                             placeholder="What happened?"
                                                         />
                                                     </div>
 
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Date</label>
+                                                    <div className="edit-event-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                                        <div className="edit-event-field">
+                                                            <label className="edit-event-label">Date</label>
                                                             <input
                                                                 type="date"
                                                                 value={editForm.event_date}
                                                                 onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
-                                                                className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all"
-                                                                style={{ colorScheme: 'dark' }}
+                                                                className="edit-event-input"
                                                             />
                                                         </div>
-                                                        <div className="flex flex-col gap-2">
-                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Category</label>
-                                                            <div className="relative">
-                                                                <select
-                                                                    value={editForm.category}
-                                                                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                                                                    className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all appearance-none"
-                                                                >
-                                                                    {Object.keys(CATEGORY_COLORS).map(c => (
-                                                                        <option key={c} value={c} className="bg-[#0A0A0F]">{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                                                                    ))}
-                                                                </select>
-                                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
-                                                            </div>
+                                                        <div className="edit-event-field">
+                                                            <label className="edit-event-label">Category</label>
+                                                            <select
+                                                                value={editForm.category}
+                                                                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                                                className="edit-event-select"
+                                                            >
+                                                                {Object.keys(CATEGORY_COLORS).map(c => (
+                                                                    <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                                                                ))}
+                                                            </select>
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex flex-col gap-2">
+                                                    <div className="edit-event-field">
                                                         <div className="flex justify-between">
-                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Impact & Significance</label>
-                                                            <span className="text-xs text-indigo-400 font-bold">{editForm.significance}/10</span>
+                                                            <label className="edit-event-label">Impact & Significance</label>
+                                                            <span className="edit-event-range-value" style={{ color: 'var(--accent-primary)' }}>{editForm.significance}/10</span>
                                                         </div>
                                                         <input
                                                             type="range"
                                                             min="1" max="10"
                                                             value={editForm.significance}
                                                             onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
-                                                            className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                                            className="edit-event-range"
                                                         />
-                                                        <div className="flex justify-between text-[10px] text-gray-600 uppercase font-bold tracking-widest">
+                                                        <div className="edit-event-range-labels">
                                                             <span>Minor</span>
                                                             <span>Major</span>
                                                             <span>Life Changing</span>
@@ -428,16 +424,16 @@ export default function LifeView() {
                                                     </div>
                                                 </div>
 
-                                                <div className="px-6 py-4 border-t border-gray-800 bg-[#12121A] flex justify-end gap-3">
+                                                <div className="edit-event-footer">
                                                     <button
                                                         onClick={() => setEditingEventId(null)}
-                                                        className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                                                        className="edit-btn cancel"
                                                     >
                                                         Cancel
                                                     </button>
                                                     <button
                                                         onClick={() => handleSaveEvent(event.id)}
-                                                        className="px-5 py-2.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all transform active:scale-95"
+                                                        className="edit-btn save"
                                                     >
                                                         Save Changes
                                                     </button>
@@ -454,16 +450,16 @@ export default function LifeView() {
                                         })}
                                         {/* Show creation time if available, or just a label */}
                                         {(event as any).created_at && (
-                                            <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
+                                            <span className="event-date-logged">
                                                 (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
                                             </span>
                                         )}
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div className="event-title-row">
                                         <h3 className="event-title">{event.title}</h3>
                                         <button
                                             onClick={() => handleEditClick(event)}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                                            className="event-edit-btn"
                                             title="Edit Event"
                                         >
                                             ✏️

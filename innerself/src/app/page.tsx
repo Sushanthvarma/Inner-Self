@@ -43,24 +43,18 @@ export default function Home() {
       const res = await fetch('/api/onboarding');
       const data: OnboardingStatus = await res.json();
       setOnboardingStatus(data);
-
-      // Show onboarding only if not completed AND not skipped
       if (!data.completed && !data.skipped && !data.partial) {
         setShowOnboarding(true);
       }
     } catch {
       setOnboardingStatus({
-        completed: false,
-        skipped: false,
-        partial: false,
-        answeredCount: 0,
-        totalQuestions: 14,
+        completed: false, skipped: false, partial: false,
+        answeredCount: 0, totalQuestions: 14,
       });
       setShowOnboarding(true);
     }
   };
 
-  // Loading state
   if (onboardingStatus === null) {
     return (
       <div className="app-loading">
@@ -72,58 +66,78 @@ export default function Home() {
     );
   }
 
-  // Onboarding
   if (showOnboarding) {
     return (
       <Onboarding
         onComplete={() => {
           setShowOnboarding(false);
-          setOnboardingStatus((prev) =>
-            prev ? { ...prev, completed: true, skipped: false } : prev
-          );
+          setOnboardingStatus((prev) => prev ? { ...prev, completed: true, skipped: false } : prev);
         }}
         onSkip={() => {
           setShowOnboarding(false);
-          setOnboardingStatus((prev) =>
-            prev ? { ...prev, skipped: true } : prev
-          );
+          setOnboardingStatus((prev) => prev ? { ...prev, skipped: true } : prev);
         }}
         startFromQuestion={onboardingStatus.answeredCount}
       />
     );
   }
 
-  // Main App
   return (
     <div className="app">
-      {/* Header */}
-      <header className="app-header">
-        <h1 className="app-title">Inner Self</h1>
-        <div className="header-right">
-          <span className="app-tagline">Your Digital Witness</span>
+      {/* Desktop Sidebar */}
+      <aside className="app-sidebar">
+        <div className="sidebar-logo">
+          <h1 className="sidebar-title">Inner Self</h1>
+          <span className="sidebar-tagline">Your Digital Witness</span>
+        </div>
+        <nav className="sidebar-nav">
+          {TAB_CONFIG.map((tab) => (
+            <button
+              key={tab.id}
+              className={`sidebar-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span className="sidebar-nav-icon">{tab.icon}</span>
+              <span className="sidebar-nav-label">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
           <button
-            className="settings-gear"
+            className="sidebar-settings-btn"
             onClick={() => setSettingsOpen(true)}
-            title="Settings"
           >
-            ⚙️
+            <span>⚙️</span>
+            <span>Settings</span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* Content */}
-      <main className="app-content">
-        {activeTab === 'dump' && (
-          <BrainDump onProcessingComplete={() => { }} />
-        )}
-        {activeTab === 'log' && <LogView />}
-        {activeTab === 'tasks' && <TasksView />}
-        {activeTab === 'life' && <LifeView />}
-        {activeTab === 'mirror' && <MirrorView />}
-        {activeTab === 'chat' && <ChatView />}
-      </main>
+      {/* Main Content Area */}
+      <div className="app-main">
+        {/* Mobile Header */}
+        <header className="app-header">
+          <h1 className="app-title">Inner Self</h1>
+          <div className="header-right">
+            <span className="app-tagline">Your Digital Witness</span>
+            <button className="settings-gear" onClick={() => setSettingsOpen(true)} title="Settings">
+              ⚙️
+            </button>
+          </div>
+        </header>
 
-      {/* Bottom Navigation */}
+        {/* Content */}
+        <main className="app-content">
+          {activeTab === 'dump' && <BrainDump onProcessingComplete={() => {}} />}
+          {activeTab === 'log' && <LogView />}
+          {activeTab === 'tasks' && <TasksView />}
+          {activeTab === 'life' && <LifeView />}
+          {activeTab === 'mirror' && <MirrorView />}
+          {activeTab === 'chat' && <ChatView />}
+        </main>
+      </div>
+
+      {/* Mobile Bottom Navigation */}
       <nav className="bottom-nav">
         {TAB_CONFIG.map((tab) => (
           <button

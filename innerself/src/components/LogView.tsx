@@ -248,15 +248,12 @@ export default function LogView() {
         <div className="log-view">
             <div className="log-header">
                 <h2>Your Log</h2>
-                <div className="flex gap-2 bg-gray-900/50 p-1 rounded-lg border border-gray-800">
+                <div className="log-filters">
                     {['all', 'reflections', 'voice', 'system'].map((filter) => (
                         <button
                             key={filter}
                             onClick={() => setActiveFilter(filter as any)}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeFilter === filter
-                                ? 'bg-gray-700 text-white shadow-sm'
-                                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                                }`}
+                            className={`log-filter-btn ${activeFilter === filter ? 'active' : ''}`}
                         >
                             {filter === 'system' ? '🖥️ System Log' : filter.charAt(0).toUpperCase() + filter.slice(1)}
                         </button>
@@ -275,31 +272,29 @@ export default function LogView() {
             ) : null}
 
             {activeFilter === 'system' ? (
-                <div className="system-log-container flex flex-col gap-0 border border-gray-800 rounded-lg overflow-hidden bg-[#0d0d10] font-mono text-xs mt-4">
+                <div className="system-log-container">
                     {loadingSystem ? (
-                        <div className="p-8 text-center text-gray-500">Accessing System Core...</div>
+                        <div className="system-log-loading">Accessing System Core...</div>
                     ) : (
                         systemLog.map((log) => (
-                            <div key={log.id} className={`flex gap-3 p-3 border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors ${log.role === 'assistant' ? 'bg-indigo-950/10' : ''
-                                }`}>
-                                <div className="text-gray-600 w-24 flex-shrink-0 tabular-nums text-[10px] pt-1">
+                            <div key={log.id} className={`system-log-entry${log.role === 'assistant' ? ' ai' : ''}`}>
+                                <div className="system-log-time">
                                     {new Date(log.created_at).toLocaleString('en-IN', {
                                         month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
                                     })}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className={`uppercase font-bold tracking-wider text-[10px] ${log.role === 'assistant' ? 'text-indigo-400' : 'text-emerald-400'
-                                            }`}>
+                                        <span className={`system-log-role ${log.role === 'assistant' ? 'system-log-role-ai' : 'system-log-role-user'}`}>
                                             {log.role === 'assistant' ? (log.persona ? `AI (${log.persona})` : 'System') : 'User'}
                                         </span>
                                         {log.source && log.source !== 'chat' && (
-                                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                                            <span className="system-log-source">
                                                 {log.source.toUpperCase()}
                                             </span>
                                         )}
                                     </div>
-                                    <div className="text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
+                                    <div className="system-log-content">
                                         {log.content}
                                     </div>
                                 </div>
@@ -307,7 +302,7 @@ export default function LogView() {
                         ))
                     )}
                     {systemLog.length === 0 && !loadingSystem && (
-                        <div className="p-8 text-center text-gray-600">No system activity recorded yet.</div>
+                        <div className="system-log-empty">No system activity recorded yet.</div>
                     )}
                 </div>
             ) : (
@@ -325,7 +320,7 @@ export default function LogView() {
                             <div
                                 key={entry.id}
                                 className={`log-card ${isExpanded ? 'expanded' : ''}`}
-                                style={{ borderLeftColor: moodColor, borderLeftWidth: '4px', borderLeftStyle: 'solid' }}
+                                style={{ borderLeftColor: moodColor }}
                                 onClick={(e) => {
                                     // Don't collapse if clicking inside edit area or buttons
                                     if ((e.target as HTMLElement).closest('.edit-area, .log-card-actions')) return;
@@ -363,38 +358,27 @@ export default function LogView() {
                                         <textarea
                                             value={editContent}
                                             onChange={(e) => setEditContent(e.target.value)}
-                                            style={{
-                                                width: '100%',
-                                                minHeight: '120px',
-                                                background: '#16161F',
-                                                color: '#fff',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                                padding: '12px',
-                                                fontSize: '14px',
-                                                marginBottom: '8px',
-                                                resize: 'vertical'
-                                            }}
+                                            className="log-edit-textarea"
                                         />
-                                        <div className="edit-actions" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <div className="edit-actions">
                                             <button
                                                 onClick={handleCancelEdit}
                                                 disabled={isSaving}
-                                                style={{ padding: '6px 12px', borderRadius: '6px', background: 'transparent', color: '#9CA3AF', border: '1px solid #374151', fontSize: '12px' }}
+                                                className="edit-btn cancel"
                                             >
                                                 Cancel
                                             </button>
                                             <button
                                                 onClick={() => handleSave(false)}
                                                 disabled={isSaving}
-                                                style={{ padding: '6px 12px', borderRadius: '6px', background: '#374151', color: '#fff', border: 'none', fontSize: '12px' }}
+                                                className="edit-btn save"
                                             >
                                                 Save Text Only
                                             </button>
                                             <button
                                                 onClick={() => handleSave(true)}
                                                 disabled={isSaving}
-                                                style={{ padding: '6px 12px', borderRadius: '6px', background: '#818CF8', color: '#fff', border: 'none', fontSize: '12px', fontWeight: 500 }}
+                                                className="edit-btn reprocess"
                                             >
                                                 {isSaving ? 'Processing...' : 'Save & Re-Analyze AI'}
                                             </button>
@@ -403,16 +387,13 @@ export default function LogView() {
                                 ) : (
                                     <div className="log-card-content">
                                         {isReflection ? (
-                                            <div className="flex flex-col gap-3 mt-2 bg-gray-900/30 p-3 rounded-lg border border-gray-800/50">
+                                            <div className="mirror-conversation">
                                                 {parseMirrorConversation(entry.raw_text).map((msg, i) => (
-                                                    <div key={i} className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                                        <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                                    <div key={i} className={`mirror-msg ${msg.role}`}>
+                                                        <span className="mirror-msg-label">
                                                             {msg.role === 'user' ? 'You' : 'Mirror'}
                                                         </span>
-                                                        <div className={`px-3 py-2 rounded-lg text-sm max-w-[90%] ${msg.role === 'user'
-                                                            ? 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/20 rounded-tr-sm'
-                                                            : 'bg-gray-800 text-gray-300 border border-gray-700 rounded-tl-sm'
-                                                            }`}>
+                                                        <div className="mirror-msg-bubble">
                                                             {msg.content}
                                                         </div>
                                                     </div>
@@ -427,18 +408,7 @@ export default function LogView() {
                                 {isExpanded && !isEditing && entity && (
                                     <div className="log-card-details">
                                         <div className="log-card-actions" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-                                            <button
-                                                onClick={() => handleEditStart(entry)}
-                                                style={{
-                                                    fontSize: '12px',
-                                                    color: '#818CF8',
-                                                    background: 'rgba(129, 140, 248, 0.1)',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '4px',
-                                                    border: 'none',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
+                                            <button onClick={() => handleEditStart(entry)} className="entry-action-btn edit">
                                                 ✏️ Edit & Update AI
                                             </button>
                                         </div>
@@ -463,15 +433,7 @@ export default function LogView() {
                                         <div className="detail-row">
                                             <span className="detail-label">Energy</span>
                                             <span className="detail-value">
-                                                <span style={{
-                                                    display: 'inline-block',
-                                                    width: `${(entity.energy_level / 10) * 60}px`,
-                                                    height: '8px',
-                                                    borderRadius: '4px',
-                                                    backgroundColor: entity.energy_level <= 3 ? '#EF4444' : entity.energy_level <= 6 ? '#FBBF24' : '#4ADE80',
-                                                    marginRight: '6px',
-                                                    verticalAlign: 'middle',
-                                                }} />
+                                                <span className={`energy-bar ${entity.energy_level <= 3 ? 'low' : entity.energy_level <= 6 ? 'mid' : 'high'}`} style={{ width: `${(entity.energy_level / 10) * 60}px` }} />
                                                 {entity.energy_level}/10
                                             </span>
                                         </div>
@@ -479,7 +441,7 @@ export default function LogView() {
                                         {/* Self-Talk */}
                                         <div className="detail-row">
                                             <span className="detail-label">Self-Talk</span>
-                                            <span className="detail-value" style={{ color: selfTalk?.color }}>
+                                            <span className={`detail-value self-talk-${entity.self_talk_tone}`}>
                                                 {entity.self_talk_tone}
                                             </span>
                                         </div>
@@ -530,7 +492,7 @@ export default function LogView() {
                                         {entity.avoidance_signal && (
                                             <div className="detail-row">
                                                 <span className="detail-label">Avoiding</span>
-                                                <span className="detail-value" style={{ color: '#F97316' }}>{entity.avoidance_signal}</span>
+                                                <span className="detail-value avoidance">{entity.avoidance_signal}</span>
                                             </div>
                                         )}
 
@@ -538,7 +500,7 @@ export default function LogView() {
                                         {entity.growth_edge && (
                                             <div className="detail-row">
                                                 <span className="detail-label">Growth</span>
-                                                <span className="detail-value" style={{ color: '#4ADE80' }}>{entity.growth_edge}</span>
+                                                <span className="detail-value growth">{entity.growth_edge}</span>
                                             </div>
                                         )}
 
