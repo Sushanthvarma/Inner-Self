@@ -34,7 +34,19 @@ interface MetricGroup {
     icon: string;
     color: string;
     gradient: string;
-    metrics: string[];   // metric names that belong here
+    metrics: string[];
+}
+
+interface HealthInsights {
+    overall_verdict: string;
+    health_score: number;
+    trend_summary: string;
+    flagged_concerns: { metric: string; issue: string; value: string; risk: string; urgency: string }[];
+    improvements: { metric: string; change: string; detail: string }[];
+    diet_recommendations: { title: string; detail: string; targets: string; icon: string }[];
+    lifestyle_recommendations: { title: string; detail: string; targets: string; icon: string }[];
+    supplements_to_consider: { name: string; reason: string; caution: string }[];
+    next_steps: string[];
 }
 
 // ──────────────────────────────────────────────────
@@ -82,7 +94,6 @@ const REFERENCE_RANGES: Record<string, ReferenceRange> = {
 function findRange(metricName: string): ReferenceRange | null {
     const key = metricName.toLowerCase().trim();
     if (REFERENCE_RANGES[key]) return REFERENCE_RANGES[key];
-    // Fuzzy match
     for (const [k, v] of Object.entries(REFERENCE_RANGES)) {
         if (key.includes(k) || k.includes(key)) return v;
     }
@@ -90,71 +101,27 @@ function findRange(metricName: string): ReferenceRange | null {
 }
 
 // ──────────────────────────────────────────────────
-// METRIC GROUPING — which body system does each metric belong to?
+// METRIC GROUPING
 // ──────────────────────────────────────────────────
 const METRIC_GROUPS: MetricGroup[] = [
-    {
-        key: 'lipid',
-        label: 'Lipid Panel',
-        icon: '🫀',
-        color: '#EF4444',
-        gradient: 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.03))',
-        metrics: ['cholesterol', 'triglycerides', 'hdl', 'ldl', 'vldl'],
-    },
-    {
-        key: 'metabolic',
-        label: 'Metabolic & Sugar',
-        icon: '🔬',
-        color: '#F59E0B',
-        gradient: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))',
-        metrics: ['glucose', 'hba1c', 'hemoglobin a1c', 'insulin', 'calcium', 'sodium', 'potassium', 'urea', 'uric acid', 'creatinine'],
-    },
-    {
-        key: 'liver',
-        label: 'Liver Function',
-        icon: '🧬',
-        color: '#8B5CF6',
-        gradient: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.03))',
-        metrics: ['alt', 'sgpt', 'ast', 'sgot', 'alkaline phosphatase', 'bilirubin', 'albumin', 'globulin', 'protein'],
-    },
-    {
-        key: 'blood',
-        label: 'Blood Count (CBC)',
-        icon: '🩸',
-        color: '#EC4899',
-        gradient: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(236,72,153,0.03))',
-        metrics: ['hemoglobin', 'hematocrit', 'rbc', 'platelet', 'wbc', 'lymphocyte', 'neutrophil', 'eosinophil', 'basophil', 'monocyte', 'mcv', 'mch', 'mchc', 'rdw', 'esr', 'mpv'],
-    },
-    {
-        key: 'thyroid',
-        label: 'Thyroid & Hormones',
-        icon: '🦋',
-        color: '#06B6D4',
-        gradient: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.03))',
-        metrics: ['tsh', 't3', 't4', 'thyroid', 'testosterone', 'cortisol', 'dhea'],
-    },
-    {
-        key: 'vitamins',
-        label: 'Vitamins & Minerals',
-        icon: '💊',
-        color: '#10B981',
-        gradient: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.03))',
-        metrics: ['vitamin', 'iron', 'ferritin', 'zinc', 'magnesium', 'folate', 'folic'],
-    },
+    { key: 'lipid', label: 'Lipid Panel', icon: '🫀', color: '#EF4444', gradient: 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.03))', metrics: ['cholesterol', 'triglycerides', 'hdl', 'ldl', 'vldl'] },
+    { key: 'metabolic', label: 'Metabolic & Sugar', icon: '🔬', color: '#F59E0B', gradient: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))', metrics: ['glucose', 'hba1c', 'hemoglobin a1c', 'insulin', 'calcium', 'sodium', 'potassium', 'urea', 'uric acid', 'creatinine'] },
+    { key: 'liver', label: 'Liver Function', icon: '🧬', color: '#8B5CF6', gradient: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.03))', metrics: ['alt', 'sgpt', 'ast', 'sgot', 'alkaline phosphatase', 'bilirubin', 'albumin', 'globulin', 'protein'] },
+    { key: 'blood', label: 'Blood Count (CBC)', icon: '🩸', color: '#EC4899', gradient: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(236,72,153,0.03))', metrics: ['hemoglobin', 'hematocrit', 'rbc', 'platelet', 'wbc', 'lymphocyte', 'neutrophil', 'eosinophil', 'basophil', 'monocyte', 'mcv', 'mch', 'mchc', 'rdw', 'esr', 'mpv'] },
+    { key: 'thyroid', label: 'Thyroid & Hormones', icon: '🦋', color: '#06B6D4', gradient: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.03))', metrics: ['tsh', 't3', 't4', 'thyroid', 'testosterone', 'cortisol', 'dhea'] },
+    { key: 'vitamins', label: 'Vitamins & Minerals', icon: '💊', color: '#10B981', gradient: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.03))', metrics: ['vitamin', 'iron', 'ferritin', 'zinc', 'magnesium', 'folate', 'folic'] },
 ];
 
 function classifyMetric(name: string): string {
     const lower = name.toLowerCase();
     for (const group of METRIC_GROUPS) {
-        if (group.metrics.some(keyword => lower.includes(keyword))) {
-            return group.key;
-        }
+        if (group.metrics.some(keyword => lower.includes(keyword))) return group.key;
     }
     return 'other';
 }
 
 // ──────────────────────────────────────────────────
-// HELPER: determine visual status from value + range
+// STATUS HELPERS
 // ──────────────────────────────────────────────────
 function getComputedStatus(value: number, range: ReferenceRange | null, rawStatus?: string): 'normal' | 'high' | 'low' | 'critical' {
     if (range) {
@@ -164,7 +131,6 @@ function getComputedStatus(value: number, range: ReferenceRange | null, rawStatu
         if (value < range.low) return 'low';
         return 'normal';
     }
-    // Fall back to AI-provided status
     const s = (rawStatus || 'normal').toLowerCase();
     if (s === 'high' || s === 'low') return s;
     return 'normal';
@@ -178,11 +144,28 @@ const STATUS_COLORS = {
 };
 
 // ──────────────────────────────────────────────────
-// RANGE BAR — shows where value sits relative to normal
+// TREND: compute change between last 2 readings
+// ──────────────────────────────────────────────────
+function getTrend(data: MetricPoint[]): { arrow: string; pctChange: number; direction: 'up' | 'down' | 'stable'; prevValue: number; color: string } | null {
+    if (data.length < 2) return null;
+    const prev = data[data.length - 2].value;
+    const curr = data[data.length - 1].value;
+    if (prev === 0) return null;
+    const pct = ((curr - prev) / prev) * 100;
+    const absPct = Math.abs(pct);
+    if (absPct < 0.5) return { arrow: '→', pctChange: 0, direction: 'stable', prevValue: prev, color: '#6B7280' };
+
+    const direction: 'up' | 'down' = pct > 0 ? 'up' : 'down';
+    const arrow = pct > 0 ? '↑' : '↓';
+    const color = pct > 0 ? '#EF4444' : '#10B981';
+    return { arrow, pctChange: Math.round(absPct * 10) / 10, direction, prevValue: prev, color };
+}
+
+// ──────────────────────────────────────────────────
+// RANGE BAR
 // ──────────────────────────────────────────────────
 function RangeBar({ value, range, status }: { value: number; range: ReferenceRange | null; status: 'normal' | 'high' | 'low' | 'critical' }) {
     if (!range) {
-        // No range data — show a simple colored dot
         return (
             <div className="hd-range-bar-wrap">
                 <div className="hd-range-bar">
@@ -191,45 +174,28 @@ function RangeBar({ value, range, status }: { value: number; range: ReferenceRan
             </div>
         );
     }
-
-    // Calculate position as percentage (allow overshoot)
     const fullMin = range.criticalLow ?? range.low * 0.6;
     const fullMax = range.criticalHigh ?? range.high * 1.5;
     const fullRange = fullMax - fullMin || 1;
     const pct = Math.max(2, Math.min(98, ((value - fullMin) / fullRange) * 100));
-
-    // Normal zone position
     const normalStart = ((range.low - fullMin) / fullRange) * 100;
     const normalEnd = ((range.high - fullMin) / fullRange) * 100;
-
     const dotColor = STATUS_COLORS[status].text;
 
     return (
         <div className="hd-range-bar-wrap">
             <div className="hd-range-bar">
-                {/* Gray background track */}
                 <div className="hd-range-track" />
-                {/* Green normal zone */}
-                <div
-                    className="hd-range-normal"
-                    style={{ left: `${normalStart}%`, width: `${normalEnd - normalStart}%` }}
-                />
-                {/* Value dot */}
-                <div
-                    className="hd-range-dot"
-                    style={{ left: `${pct}%`, background: dotColor, boxShadow: `0 0 8px ${dotColor}55` }}
-                />
+                <div className="hd-range-normal" style={{ left: `${normalStart}%`, width: `${normalEnd - normalStart}%` }} />
+                <div className="hd-range-dot" style={{ left: `${pct}%`, background: dotColor, boxShadow: `0 0 8px ${dotColor}55` }} />
             </div>
-            <div className="hd-range-labels">
-                <span>{range.low}</span>
-                <span>{range.high}</span>
-            </div>
+            <div className="hd-range-labels"><span>{range.low}</span><span>{range.high}</span></div>
         </div>
     );
 }
 
 // ──────────────────────────────────────────────────
-// RADIAL GAUGE — overall health score
+// RADIAL GAUGE
 // ──────────────────────────────────────────────────
 function RadialGauge({ score, total, label }: { score: number; total: number; label: string }) {
     const pct = total === 0 ? 0 : Math.round((score / total) * 100);
@@ -237,20 +203,11 @@ function RadialGauge({ score, total, label }: { score: number; total: number; la
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (pct / 100) * circumference;
     const color = pct >= 80 ? '#10B981' : pct >= 60 ? '#F59E0B' : '#EF4444';
-
     return (
         <div className="hd-gauge">
             <svg width="130" height="130" viewBox="0 0 130 130">
                 <circle cx="65" cy="65" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
-                <circle
-                    cx="65" cy="65" r={radius}
-                    fill="none" stroke={color} strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={offset}
-                    transform="rotate(-90 65 65)"
-                    style={{ transition: 'stroke-dashoffset 1s ease' }}
-                />
+                <circle cx="65" cy="65" r={radius} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 65 65)" style={{ transition: 'stroke-dashoffset 1s ease' }} />
             </svg>
             <div className="hd-gauge-text">
                 <span className="hd-gauge-pct" style={{ color }}>{pct}%</span>
@@ -261,23 +218,14 @@ function RadialGauge({ score, total, label }: { score: number; total: number; la
 }
 
 // ──────────────────────────────────────────────────
-// SINGLE METRIC CARD
+// METRIC CARD — with trend comparison
 // ──────────────────────────────────────────────────
-function MetricCard({
-    name,
-    data,
-    groupColor,
-    onDelete,
-}: {
-    name: string;
-    data: MetricPoint[];
-    groupColor: string;
-    onDelete: (id: string, name: string) => void;
-}) {
+function MetricCard({ name, data, groupColor, onDelete }: { name: string; data: MetricPoint[]; groupColor: string; onDelete: (id: string, name: string) => void }) {
     const latest = data[data.length - 1];
     const range = findRange(name);
     const status = getComputedStatus(latest.value, range, latest.status);
     const sc = STATUS_COLORS[status];
+    const trend = getTrend(data);
 
     return (
         <div className={`hd-metric-card hd-status-${status}`}>
@@ -286,34 +234,31 @@ function MetricCard({
                     <span className="hd-metric-name">{name}</span>
                     <span className="hd-metric-date">{latest.date}</span>
                 </div>
-                <button
-                    className="hd-metric-x"
-                    onClick={() => onDelete(latest.id, name)}
-                    title="Delete"
-                >
-                    &times;
-                </button>
+                <button className="hd-metric-x" onClick={() => onDelete(latest.id, name)} title="Delete">&times;</button>
             </div>
             <div className="hd-metric-val-row">
-                <span className="hd-metric-val" style={{ color: sc.text }}>
-                    {latest.value}
-                </span>
+                <span className="hd-metric-val" style={{ color: sc.text }}>{latest.value}</span>
                 <span className="hd-metric-unit">{latest.unit || ''}</span>
-                <span className="hd-metric-badge" style={{ background: sc.bg, color: sc.text }}>
-                    {sc.label}
-                </span>
+                <span className="hd-metric-badge" style={{ background: sc.bg, color: sc.text }}>{sc.label}</span>
             </div>
-            <RangeBar value={latest.value} range={range} status={status} />
-            {/* Mini sparkline for multi-value metrics */}
-            {data.length > 1 && (
-                <MiniSparkline data={data} color={groupColor} />
+            {/* Trend comparison */}
+            {trend && (
+                <div className="hd-trend-row">
+                    <span className="hd-trend-arrow" style={{ color: trend.color }}>{trend.arrow}</span>
+                    <span className="hd-trend-pct" style={{ color: trend.color }}>
+                        {trend.pctChange > 0 ? `${trend.pctChange}%` : 'Stable'}
+                    </span>
+                    <span className="hd-trend-prev">vs {trend.prevValue} {latest.unit}</span>
+                </div>
             )}
+            <RangeBar value={latest.value} range={range} status={status} />
+            {data.length > 1 && <MiniSparkline data={data} color={groupColor} />}
         </div>
     );
 }
 
 // ──────────────────────────────────────────────────
-// MINI SPARKLINE (for metrics with multiple readings)
+// MINI SPARKLINE
 // ──────────────────────────────────────────────────
 function MiniSparkline({ data, color }: { data: MetricPoint[]; color: string }) {
     const values = data.map(d => d.value);
@@ -321,7 +266,6 @@ function MiniSparkline({ data, color }: { data: MetricPoint[]; color: string }) 
     const max = Math.max(...values);
     const range = max - min || 1;
     const w = 200, h = 36, p = 4;
-
     const points = data.map((d, i) => {
         const x = (i / (data.length - 1)) * (w - 2 * p) + p;
         const y = h - p - ((d.value - min) / range) * (h - 2 * p);
@@ -338,43 +282,22 @@ function MiniSparkline({ data, color }: { data: MetricPoint[]; color: string }) 
                     </linearGradient>
                 </defs>
                 <polyline fill="none" stroke={color} strokeWidth="2" points={points} strokeLinecap="round" strokeLinejoin="round" />
-                {/* Area fill */}
-                <polygon
-                    fill={`url(#sg-${color.replace('#', '')})`}
-                    points={`${p},${h} ${points} ${w - p},${h}`}
-                />
+                <polygon fill={`url(#sg-${color.replace('#', '')})`} points={`${p},${h} ${points} ${w - p},${h}`} />
             </svg>
-            <div className="hd-mini-spark-range">
-                <span>{data[0].date}</span>
-                <span>{data[data.length - 1].date}</span>
-            </div>
+            <div className="hd-mini-spark-range"><span>{data[0].date}</span><span>{data[data.length - 1].date}</span></div>
         </div>
     );
 }
 
 // ──────────────────────────────────────────────────
-// BODY SYSTEM PANEL — grouped panel for one organ system
+// SYSTEM PANEL — grouped
 // ──────────────────────────────────────────────────
-function SystemPanel({
-    group,
-    metricsInGroup,
-    onDelete,
-}: {
-    group: MetricGroup;
-    metricsInGroup: [string, MetricPoint[]][];
-    onDelete: (id: string, name: string) => void;
-}) {
+function SystemPanel({ group, metricsInGroup, onDelete }: { group: MetricGroup; metricsInGroup: [string, MetricPoint[]][]; onDelete: (id: string, name: string) => void }) {
     const [collapsed, setCollapsed] = useState(false);
-
-    // Compute stats
-    let normalCount = 0;
-    let abnormalCount = 0;
+    let normalCount = 0, abnormalCount = 0;
     metricsInGroup.forEach(([name, data]) => {
-        const latest = data[data.length - 1];
-        const range = findRange(name);
-        const status = getComputedStatus(latest.value, range, latest.status);
-        if (status === 'normal') normalCount++;
-        else abnormalCount++;
+        const st = getComputedStatus(data[data.length - 1].value, findRange(name), data[data.length - 1].status);
+        if (st === 'normal') normalCount++; else abnormalCount++;
     });
     const total = normalCount + abnormalCount;
 
@@ -387,23 +310,14 @@ function SystemPanel({
                         <h3 className="hd-system-title">{group.label}</h3>
                         <div className="hd-system-stats">
                             <span className="hd-stat-ok">{normalCount} normal</span>
-                            {abnormalCount > 0 && (
-                                <span className="hd-stat-warn">{abnormalCount} flagged</span>
-                            )}
+                            {abnormalCount > 0 && <span className="hd-stat-warn">{abnormalCount} flagged</span>}
                             <span className="hd-stat-total">{total} tests</span>
                         </div>
                     </div>
                 </div>
                 <div className="hd-system-right">
-                    {/* Mini health bar */}
                     <div className="hd-mini-health-bar">
-                        <div
-                            className="hd-mini-health-fill"
-                            style={{
-                                width: `${total > 0 ? (normalCount / total) * 100 : 0}%`,
-                                background: normalCount === total ? '#10B981' : '#F59E0B',
-                            }}
-                        />
+                        <div className="hd-mini-health-fill" style={{ width: `${total > 0 ? (normalCount / total) * 100 : 0}%`, background: normalCount === total ? '#10B981' : '#F59E0B' }} />
                     </div>
                     <span className={`hd-chevron ${collapsed ? '' : 'open'}`}>&#9662;</span>
                 </div>
@@ -411,16 +325,178 @@ function SystemPanel({
             {!collapsed && (
                 <div className="hd-system-grid">
                     {metricsInGroup.map(([name, data]) => (
-                        <MetricCard
-                            key={name}
-                            name={name}
-                            data={data}
-                            groupColor={group.color}
-                            onDelete={onDelete}
-                        />
+                        <MetricCard key={name} name={name} data={data} groupColor={group.color} onDelete={onDelete} />
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────
+// INSIGHTS PANEL — AI-generated health analysis
+// ──────────────────────────────────────────────────
+function InsightsPanel({ insights, loading, onRegenerate }: { insights: HealthInsights | null; loading: boolean; onRegenerate: () => void }) {
+    const [activeTab, setActiveTab] = useState<'overview' | 'diet' | 'lifestyle' | 'next'>('overview');
+
+    if (loading) {
+        return (
+            <div className="hi-panel">
+                <div className="hi-loading">
+                    <span className="loading-spinner" />
+                    <span>Analyzing your health data with AI...</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!insights) {
+        return (
+            <div className="hi-panel hi-empty">
+                <div className="hi-empty-content">
+                    <span className="hi-empty-icon">🤖</span>
+                    <h3>Get AI Health Analysis</h3>
+                    <p>Let AI compare your reports, spot trends, and give you personalized diet & lifestyle recommendations.</p>
+                    <button className="hi-generate-btn" onClick={onRegenerate}>Analyze My Health</button>
+                </div>
+            </div>
+        );
+    }
+
+    const scoreColor = insights.health_score >= 80 ? '#10B981' : insights.health_score >= 60 ? '#F59E0B' : '#EF4444';
+
+    return (
+        <div className="hi-panel">
+            {/* Header */}
+            <div className="hi-header">
+                <div className="hi-header-left">
+                    <h3 className="hi-title">AI Health Analysis</h3>
+                    <p className="hi-verdict">{insights.overall_verdict}</p>
+                </div>
+                <div className="hi-score" style={{ borderColor: scoreColor }}>
+                    <span className="hi-score-num" style={{ color: scoreColor }}>{insights.health_score}</span>
+                    <span className="hi-score-label">Health Score</span>
+                </div>
+            </div>
+
+            {/* Trend Summary */}
+            <div className="hi-trend-summary">
+                <p>{insights.trend_summary}</p>
+            </div>
+
+            {/* Tabs */}
+            <div className="hi-tabs">
+                {(['overview', 'diet', 'lifestyle', 'next'] as const).map(tab => (
+                    <button key={tab} className={`hi-tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
+                        {tab === 'overview' ? 'Concerns' : tab === 'diet' ? 'Diet' : tab === 'lifestyle' ? 'Lifestyle' : 'Next Steps'}
+                    </button>
+                ))}
+            </div>
+
+            {/* Tab Content */}
+            <div className="hi-tab-content">
+                {activeTab === 'overview' && (
+                    <div className="hi-concerns">
+                        {/* Flagged Concerns */}
+                        {insights.flagged_concerns.length > 0 && (
+                            <div className="hi-section">
+                                <h4 className="hi-section-title">Flagged Concerns</h4>
+                                {insights.flagged_concerns.map((c, i) => (
+                                    <div key={i} className={`hi-concern-card hi-urgency-${c.urgency}`}>
+                                        <div className="hi-concern-top">
+                                            <span className="hi-concern-metric">{c.metric}</span>
+                                            <span className={`hi-urgency-badge hi-urgency-${c.urgency}`}>
+                                                {c.urgency === 'urgent' ? '🔴' : c.urgency === 'attention' ? '🟡' : '🔵'} {c.urgency}
+                                            </span>
+                                        </div>
+                                        <div className="hi-concern-issue">{c.issue} — {c.value}</div>
+                                        <div className="hi-concern-risk">{c.risk}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {/* Improvements */}
+                        {insights.improvements.length > 0 && (
+                            <div className="hi-section">
+                                <h4 className="hi-section-title">Changes Detected</h4>
+                                {insights.improvements.map((imp, i) => (
+                                    <div key={i} className={`hi-improvement-card hi-change-${imp.change}`}>
+                                        <span className="hi-imp-icon">
+                                            {imp.change === 'improved' ? '✅' : imp.change === 'worsened' ? '⚠️' : '➡️'}
+                                        </span>
+                                        <div>
+                                            <strong>{imp.metric}</strong>
+                                            <div className="hi-imp-detail">{imp.detail}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {/* Supplements */}
+                        {insights.supplements_to_consider.length > 0 && (
+                            <div className="hi-section">
+                                <h4 className="hi-section-title">Supplements to Consider</h4>
+                                {insights.supplements_to_consider.map((s, i) => (
+                                    <div key={i} className="hi-supplement-card">
+                                        <span className="hi-supp-icon">💊</span>
+                                        <div>
+                                            <strong>{s.name}</strong>
+                                            <div className="hi-supp-reason">{s.reason}</div>
+                                            {s.caution && <div className="hi-supp-caution">⚠️ {s.caution}</div>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'diet' && (
+                    <div className="hi-recs-grid">
+                        {insights.diet_recommendations.map((rec, i) => (
+                            <div key={i} className="hi-rec-card">
+                                <span className="hi-rec-icon">{rec.icon}</span>
+                                <div>
+                                    <h5 className="hi-rec-title">{rec.title}</h5>
+                                    <p className="hi-rec-detail">{rec.detail}</p>
+                                    <span className="hi-rec-targets">Targets: {rec.targets}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {activeTab === 'lifestyle' && (
+                    <div className="hi-recs-grid">
+                        {insights.lifestyle_recommendations.map((rec, i) => (
+                            <div key={i} className="hi-rec-card">
+                                <span className="hi-rec-icon">{rec.icon}</span>
+                                <div>
+                                    <h5 className="hi-rec-title">{rec.title}</h5>
+                                    <p className="hi-rec-detail">{rec.detail}</p>
+                                    <span className="hi-rec-targets">Targets: {rec.targets}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {activeTab === 'next' && (
+                    <div className="hi-next-steps">
+                        {insights.next_steps.map((step, i) => (
+                            <div key={i} className="hi-step-card">
+                                <span className="hi-step-num">{i + 1}</span>
+                                <span>{step}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Regenerate */}
+            <div className="hi-footer">
+                <button className="hi-regen-btn" onClick={onRegenerate}>Regenerate Analysis</button>
+            </div>
         </div>
     );
 }
@@ -432,23 +508,60 @@ export default function HealthDashboard() {
     const [metrics, setMetrics] = useState<Record<string, MetricPoint[]>>({});
     const [status, setStatus] = useState<UploadStatus>({ loading: false, message: '' });
     const [deleting, setDeleting] = useState(false);
+    const [insights, setInsights] = useState<HealthInsights | null>(null);
+    const [insightsLoading, setInsightsLoading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const fetchMetrics = useCallback(async () => {
         try {
             const res = await fetch('/api/health/metrics');
             const json = await res.json();
-            if (json.success) {
-                setMetrics(json.grouped_metrics || {});
-            }
-        } catch (e) {
-            console.error('Failed to fetch metrics', e);
-        }
+            if (json.success) setMetrics(json.grouped_metrics || {});
+        } catch (e) { console.error('Failed to fetch metrics', e); }
     }, []);
 
-    useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
+    // Fetch cached insights on mount
+    const fetchInsights = useCallback(async () => {
+        try {
+            const res = await fetch('/api/health/insights');
+            const json = await res.json();
+            if (json.success && json.insights) setInsights(json.insights);
+        } catch (e) { console.error('Failed to fetch insights', e); }
+    }, []);
 
-    // File upload handler
+    useEffect(() => { fetchMetrics(); fetchInsights(); }, [fetchMetrics, fetchInsights]);
+
+    // Generate (or regenerate) insights
+    const generateInsights = useCallback(async () => {
+        const allEntries = Object.entries(metrics);
+        if (allEntries.length === 0) return;
+
+        let normalCount = 0, flaggedCount = 0;
+        allEntries.forEach(([name, data]) => {
+            const st = getComputedStatus(data[data.length - 1].value, findRange(name), data[data.length - 1].status);
+            if (st === 'normal') normalCount++; else flaggedCount++;
+        });
+
+        setInsightsLoading(true);
+        try {
+            const res = await fetch('/api/health/insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    grouped_metrics: metrics,
+                    flaggedCount,
+                    normalCount,
+                    totalCount: allEntries.length,
+                }),
+            });
+            const json = await res.json();
+            if (json.success && json.insights) setInsights(json.insights);
+            else if (json.error) alert('Insights error: ' + json.error);
+        } catch (e) { console.error('Insights generation failed', e); }
+        setInsightsLoading(false);
+    }, [metrics]);
+
+    // File upload handler — auto-trigger insights after upload
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -461,16 +574,18 @@ export default function HealthDashboard() {
             if (!uploadJson.success) throw new Error(uploadJson.error || 'Upload failed');
 
             setStatus({ loading: true, message: 'Analyzing with AI (10-20s)...' });
-            const processRes = await fetch('/api/process-document', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ docId: uploadJson.docId }),
-            });
+            const processRes = await fetch('/api/process-document', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docId: uploadJson.docId }) });
             const processJson = await processRes.json();
             if (processJson.error) throw new Error(processJson.error);
 
-            setStatus({ loading: false, message: `Done! Found ${processJson.metricsFound || 0} metrics.` });
-            fetchMetrics();
+            setStatus({ loading: true, message: `Found ${processJson.metricsFound || 0} metrics. Generating health insights...` });
+            await fetchMetrics();
+
+            // Auto-trigger insights after upload
+            // Small delay to ensure state has updated
+            setTimeout(() => generateInsights(), 500);
+
+            setStatus({ loading: false, message: `Done! ${processJson.metricsFound || 0} metrics extracted.` });
         } catch (error: any) {
             setStatus({ loading: false, message: '', error: error.message });
         }
@@ -483,7 +598,6 @@ export default function HealthDashboard() {
             const res = await fetch(`/api/health/metrics?id=${id}`, { method: 'DELETE' });
             const json = await res.json();
             if (json.success) await fetchMetrics();
-            else alert('Failed to delete: ' + (json.error || 'Unknown'));
         } catch (e) { console.error('Delete failed', e); }
         setDeleting(false);
     };
@@ -494,7 +608,7 @@ export default function HealthDashboard() {
         try {
             const res = await fetch('/api/health/metrics?all=true', { method: 'DELETE' });
             const json = await res.json();
-            if (json.success) { setMetrics({}); setStatus({ loading: false, message: `Cleared ${json.deleted} metrics.` }); }
+            if (json.success) { setMetrics({}); setInsights(null); setStatus({ loading: false, message: `Cleared ${json.deleted} metrics.` }); }
         } catch (e) { console.error('Clear all failed', e); }
         setDeleting(false);
     };
@@ -513,50 +627,34 @@ export default function HealthDashboard() {
     // ── Overall stats ──
     const allEntries = Object.entries(metrics);
     const totalMetrics = allEntries.length;
-    let normalTotal = 0;
-    let abnormalTotal = 0;
+    let normalTotal = 0, abnormalTotal = 0;
     allEntries.forEach(([name, data]) => {
-        const latest = data[data.length - 1];
-        const range = findRange(name);
-        const st = getComputedStatus(latest.value, range, latest.status);
-        if (st === 'normal') normalTotal++;
-        else abnormalTotal++;
+        const st = getComputedStatus(data[data.length - 1].value, findRange(name), data[data.length - 1].status);
+        if (st === 'normal') normalTotal++; else abnormalTotal++;
     });
 
-    // Collect latest dates
     const allDates = allEntries.map(([, data]) => data[data.length - 1].date).sort();
     const latestDate = allDates.length > 0 ? allDates[allDates.length - 1] : null;
-
     const isEmpty = totalMetrics === 0;
 
     return (
         <div className="hd-dashboard">
-            {/* ─── Header ─── */}
+            {/* Header */}
             <div className="hd-header">
                 <div>
                     <h2 className="hd-title">Health & Vitals</h2>
                     {latestDate && <span className="hd-subtitle">Last updated: {latestDate}</span>}
                 </div>
                 <div className="hd-header-actions">
-                    {!isEmpty && (
-                        <button className="hd-btn-danger" onClick={handleClearAll} disabled={deleting}>
-                            Clear All
-                        </button>
-                    )}
+                    {!isEmpty && <button className="hd-btn-danger" onClick={handleClearAll} disabled={deleting}>Clear All</button>}
                     <button className="hd-btn-primary" onClick={() => fileInputRef.current?.click()}>
                         Upload Report
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            style={{ display: 'none' }}
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={handleFileUpload}
-                        />
+                        <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} />
                     </button>
                 </div>
             </div>
 
-            {/* ─── Status ─── */}
+            {/* Status */}
             {(status.loading || status.message || status.error) && (
                 <div className={`hd-status ${status.error ? 'error' : ''}`}>
                     {status.loading && <span className="loading-spinner" />}
@@ -569,82 +667,43 @@ export default function HealthDashboard() {
                 <div className="hd-empty">
                     <div className="hd-empty-icon">🩺</div>
                     <h3>No health data yet</h3>
-                    <p>Upload a lab report (PDF or image) to see your health vitals visualized here with reference ranges, trend lines, and body system grouping.</p>
+                    <p>Upload a lab report (PDF or image) to see your health vitals visualized here with reference ranges, trend comparisons, and AI-powered recommendations.</p>
                 </div>
             ) : (
                 <>
-                    {/* ─── Hero Overview ─── */}
+                    {/* Hero Overview */}
                     <div className="hd-overview">
                         <RadialGauge score={normalTotal} total={totalMetrics} label="In Range" />
                         <div className="hd-overview-stats">
                             <div className="hd-overview-row">
-                                <div className="hd-ov-card hd-ov-normal">
-                                    <span className="hd-ov-num">{normalTotal}</span>
-                                    <span className="hd-ov-label">Normal</span>
-                                </div>
-                                <div className="hd-ov-card hd-ov-flagged">
-                                    <span className="hd-ov-num">{abnormalTotal}</span>
-                                    <span className="hd-ov-label">Flagged</span>
-                                </div>
-                                <div className="hd-ov-card hd-ov-total">
-                                    <span className="hd-ov-num">{totalMetrics}</span>
-                                    <span className="hd-ov-label">Total Tests</span>
-                                </div>
+                                <div className="hd-ov-card hd-ov-normal"><span className="hd-ov-num">{normalTotal}</span><span className="hd-ov-label">Normal</span></div>
+                                <div className="hd-ov-card hd-ov-flagged"><span className="hd-ov-num">{abnormalTotal}</span><span className="hd-ov-label">Flagged</span></div>
+                                <div className="hd-ov-card hd-ov-total"><span className="hd-ov-num">{totalMetrics}</span><span className="hd-ov-label">Total Tests</span></div>
                             </div>
-                            {/* System chips */}
                             <div className="hd-system-chips">
                                 {METRIC_GROUPS.filter(g => grouped[g.key]).map(g => {
                                     const count = grouped[g.key]?.length || 0;
-                                    const norms = grouped[g.key]?.filter(([name, data]) => {
-                                        const r = findRange(name);
-                                        return getComputedStatus(data[data.length - 1].value, r, data[data.length - 1].status) === 'normal';
-                                    }).length || 0;
-                                    const allOk = norms === count;
+                                    const norms = grouped[g.key]?.filter(([name, data]) => getComputedStatus(data[data.length - 1].value, findRange(name), data[data.length - 1].status) === 'normal').length || 0;
                                     return (
-                                        <span
-                                            key={g.key}
-                                            className={`hd-sys-chip ${allOk ? 'ok' : 'warn'}`}
-                                            style={{ borderColor: allOk ? '#10B981' : '#F59E0B' }}
-                                        >
-                                            {g.icon} {g.label}
-                                            <span className="hd-sys-chip-count">{norms}/{count}</span>
+                                        <span key={g.key} className={`hd-sys-chip ${norms === count ? 'ok' : 'warn'}`} style={{ borderColor: norms === count ? '#10B981' : '#F59E0B' }}>
+                                            {g.icon} {g.label}<span className="hd-sys-chip-count">{norms}/{count}</span>
                                         </span>
                                     );
                                 })}
-                                {grouped['other'] && (
-                                    <span className="hd-sys-chip ok" style={{ borderColor: '#6B7280' }}>
-                                        📋 Other
-                                        <span className="hd-sys-chip-count">{grouped['other'].length}</span>
-                                    </span>
-                                )}
                             </div>
                         </div>
                     </div>
 
-                    {/* ─── Grouped Panels ─── */}
+                    {/* AI Insights Panel */}
+                    <InsightsPanel insights={insights} loading={insightsLoading} onRegenerate={generateInsights} />
+
+                    {/* Grouped Panels */}
                     <div className="hd-panels">
                         {METRIC_GROUPS.filter(g => grouped[g.key]).map(g => (
-                            <SystemPanel
-                                key={g.key}
-                                group={g}
-                                metricsInGroup={grouped[g.key]}
-                                onDelete={handleDeleteMetric}
-                            />
+                            <SystemPanel key={g.key} group={g} metricsInGroup={grouped[g.key]} onDelete={handleDeleteMetric} />
                         ))}
-                        {/* Other / uncategorized */}
                         {grouped['other'] && (
-                            <SystemPanel
-                                group={{
-                                    key: 'other',
-                                    label: 'Other Metrics',
-                                    icon: '📋',
-                                    color: '#6B7280',
-                                    gradient: 'linear-gradient(135deg, rgba(107,114,128,0.12), rgba(107,114,128,0.03))',
-                                    metrics: [],
-                                }}
-                                metricsInGroup={grouped['other']}
-                                onDelete={handleDeleteMetric}
-                            />
+                            <SystemPanel group={{ key: 'other', label: 'Other Metrics', icon: '📋', color: '#6B7280', gradient: 'linear-gradient(135deg, rgba(107,114,128,0.12), rgba(107,114,128,0.03))', metrics: [] }} metricsInGroup={grouped['other']} onDelete={handleDeleteMetric} />
                         )}
                     </div>
                 </>

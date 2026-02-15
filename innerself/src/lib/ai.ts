@@ -1015,3 +1015,88 @@ ${data.lifeEvents.map(e => `- [${e.category}] "${e.title}": ${e.description} (si
     return await callClaudeText(systemPrompt, userMessage);
 }
 
+// ---- Generate Health Insights & Comparison ----
+export async function generateHealthInsights(metricsData: {
+    grouped: Record<string, { date: string; value: number; unit: string; status?: string }[]>;
+    flaggedCount: number;
+    normalCount: number;
+    totalCount: number;
+}): Promise<string> {
+    const systemPrompt = `You are a health-savvy wellness advisor for an Indian male professional named Sushanth Varma. You are NOT a doctor — you are a knowledgeable health guide who reads lab reports and gives practical, actionable lifestyle advice.
+
+Your job: Look at ALL the health metrics provided, compare values across dates (if multiple readings exist), and produce a comprehensive yet concise health analysis.
+
+Respond with ONLY valid JSON in this EXACT structure:
+{
+  "overall_verdict": "One sentence summary of overall health status",
+  "health_score": 1-100,
+  "trend_summary": "2-3 sentences about how health is trending over time if multiple dates available, or current snapshot if single date",
+  "flagged_concerns": [
+    {
+      "metric": "metric name",
+      "issue": "what's wrong (high/low/critical)",
+      "value": "current value with unit",
+      "risk": "what this could mean for health",
+      "urgency": "monitor|attention|urgent"
+    }
+  ],
+  "improvements": [
+    {
+      "metric": "metric name",
+      "change": "improved|worsened|stable",
+      "detail": "e.g. Cholesterol dropped from 210 to 186"
+    }
+  ],
+  "diet_recommendations": [
+    {
+      "title": "short action title",
+      "detail": "specific practical advice with Indian food examples where relevant",
+      "targets": "which metrics this helps",
+      "icon": "emoji"
+    }
+  ],
+  "lifestyle_recommendations": [
+    {
+      "title": "short action title",
+      "detail": "specific practical advice",
+      "targets": "which metrics this helps",
+      "icon": "emoji"
+    }
+  ],
+  "supplements_to_consider": [
+    {
+      "name": "supplement name",
+      "reason": "why based on the metrics",
+      "caution": "any warning"
+    }
+  ],
+  "next_steps": ["specific action items like 'Retest HbA1c in 3 months'"]
+}
+
+RULES:
+1. Be SPECIFIC — reference actual metric names and values from the data.
+2. Compare across dates if multiple readings exist. Highlight what improved and what worsened.
+3. For diet, give INDIAN-friendly food examples (dal, ragi, methi, amla, etc.) alongside universal ones.
+4. For lifestyle, be practical (e.g., "30 min brisk walk after dinner" not "exercise more").
+5. If a metric moved from abnormal to normal, CELEBRATE it.
+6. If a metric worsened, flag it with urgency.
+7. Keep diet_recommendations to 4-6 items, lifestyle to 3-5, supplements to 2-4.
+8. health_score: 85+ = excellent, 70-84 = good, 55-69 = needs attention, below 55 = concerning.`;
+
+    const metricsText = Object.entries(metricsData.grouped).map(([name, readings]) => {
+        const readingsStr = readings.map(r => `  ${r.date}: ${r.value} ${r.unit} [${r.status || 'unknown'}]`).join('\n');
+        return `${name}:\n${readingsStr}`;
+    }).join('\n\n');
+
+    const userMessage = `Here are my complete health metrics:
+
+SUMMARY: ${metricsData.totalCount} total tests, ${metricsData.normalCount} normal, ${metricsData.flaggedCount} flagged.
+
+METRICS BY NAME (with all readings across dates):
+${metricsText}
+
+Please analyze these results, compare across dates where possible, identify concerns, and give me specific diet/lifestyle recommendations to improve my health.`;
+
+    return await callClaudeJSON(systemPrompt, userMessage);
+}
+
