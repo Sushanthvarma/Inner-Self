@@ -62,8 +62,52 @@ export default function LifeView() {
     const [answeringGapId, setAnsweringGapId] = useState<string | null>(null);
     const [gapAnswer, setGapAnswer] = useState('');
 
-    // Track if biography has been fetched (only story needs caching since it's expensive)
+    // Track if biography has been fetched
     const biographyFetched = useRef(false);
+
+    // Editing State
+    const [editingEventId, setEditingEventId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState({
+        title: '',
+        description: '',
+        event_date: '',
+        category: '',
+        significance: 5
+    });
+
+    const handleEditClick = (event: LifeEventItem) => {
+        setEditingEventId(event.id);
+        setEditForm({
+            title: event.title,
+            description: event.description,
+            event_date: event.event_date,
+            category: event.category,
+            significance: event.significance
+        });
+    };
+
+    const handleSaveEvent = async (id: string) => {
+        try {
+            const res = await fetch('/api/entries', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    eventId: id,
+                    ...editForm
+                })
+            });
+
+            if (res.ok) {
+                // Update local state
+                setEvents(prev => prev.map(e => e.id === id ? { ...e, ...editForm } : e));
+                setEditingEventId(null);
+            }
+        } catch (error) {
+            console.error('Failed to save event:', error);
+            alert('Failed to save event');
+        }
+    };
+
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -297,48 +341,108 @@ export default function LifeView() {
                                     }}
                                 />
                                 <div className="event-content">
-                                    <div className="event-date">
-                                        {new Date(event.event_date).toLocaleDateString('en-IN', {
-                                            day: 'numeric',
-                                            month: 'short',
-                                            year: 'numeric',
-                                        })}
-                                    </div>
-                                    <h3 className="event-title">{event.title}</h3>
-                                    <p className="event-description">{event.description}</p>
-                                    <div className="event-meta">
-                                        <span
-                                            className="event-category"
-                                            style={{
-                                                color: CATEGORY_COLORS[event.category] || '#6B7280',
-                                            }}
-                                        >
-                                            {event.category}
-                                        </span>
-                                        <span className="event-sig">
-                                            {'★'.repeat(Math.ceil(event.significance / 2))}
-                                        </span>
-                                    </div>
-                                    {event.emotions?.length > 0 && (
-                                        <div className="event-emotions">
-                                            {event.emotions.map((e, i) => (
-                                                <span key={i} className="emotion-chip">
-                                                    {e}
-                                                </span>
-                                            ))}
+                                    {editingEventId === event.id ? (
+                                        <div className="edit-event-form" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                value={editForm.title}
+                                                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
+                                            />
+                                            <textarea
+                                                value={editForm.description}
+                                                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px', minHeight: '60px' }}
+                                            />
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <input
+                                                    type="date"
+                                                    value={editForm.event_date}
+                                                    onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
+                                                />
+                                                <select
+                                                    value={editForm.category}
+                                                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
+                                                >
+                                                    {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                                <input
+                                                    type="number"
+                                                    min="1" max="10"
+                                                    value={editForm.significance}
+                                                    onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
+                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px', width: '60px' }}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                                                <button onClick={() => setEditingEventId(null)} style={{ color: '#9CA3AF' }}>Cancel</button>
+                                                <button onClick={() => handleSaveEvent(event.id)} style={{ background: '#3B82F6', color: 'white', padding: '4px 12px', borderRadius: '4px' }}>Save</button>
+                                            </div>
                                         </div>
-                                    )}
-                                    {event.people_involved?.length > 0 && (
-                                        <div className="event-people">
-                                            {event.people_involved.map((p, i) => (
-                                                <span key={i} className="person-chip">
-                                                    {p}
+                                    ) : (
+                                        <>
+                                            <div className="event-date">
+                                                {new Date(event.event_date).toLocaleDateString('en-IN', {
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    year: 'numeric',
+                                                })}
+                                                {/* Show creation time if available, or just a label */}
+                                                {(event as any).created_at && (
+                                                    <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
+                                                        (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <h3 className="event-title">{event.title}</h3>
+                                                <button
+                                                    onClick={() => handleEditClick(event)}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                                                    title="Edit Event"
+                                                >
+                                                    ✏️
+                                                </button>
+                                            </div>
+                                            <p className="event-description">{event.description}</p>
+                                            <div className="event-meta">
+                                                <span
+                                                    className="event-category"
+                                                    style={{
+                                                        color: CATEGORY_COLORS[event.category] || '#6B7280',
+                                                    }}
+                                                >
+                                                    {event.category}
                                                 </span>
-                                            ))}
-                                        </div>
+                                                <span className="event-sig">
+                                                    {'★'.repeat(Math.ceil(event.significance / 2))}
+                                                </span>
+                                            </div>
+                                            {event.emotions?.length > 0 && (
+                                                <div className="event-emotions">
+                                                    {event.emotions.map((e, i) => (
+                                                        <span key={i} className="emotion-chip">
+                                                            {e}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {event.people_involved?.length > 0 && (
+                                                <div className="event-people">
+                                                    {event.people_involved.map((p, i) => (
+                                                        <span key={i} className="person-chip">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
+
                         ))}
                     </div>
                 )

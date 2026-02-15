@@ -43,6 +43,15 @@ async function debug() {
     for (const t of (tasks || [])) {
         console.log(' -', t.title, '| is_task:', t.is_task, '| status:', t.task_status);
     }
+
+    // Life Events columns
+    const { data: life } = await sb.from('life_events_timeline').select('*').limit(1);
+    if (life && life.length > 0) {
+        console.log('\nLIFE EVENT KEYS:', Object.keys(life[0]));
+        console.log('SAMPLE EVENT:', JSON.stringify(life[0], null, 2));
+    } else {
+        console.log('\nNO LIFE EVENTS FOUND');
+    }
 }
 
 debug().catch(console.error);

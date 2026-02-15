@@ -120,6 +120,25 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: true });
         }
 
+        if (body.eventId) {
+            // Update Life Event
+            const { eventId, title, description, significance, event_date, category } = body;
+            const updates: Record<string, unknown> = {};
+            if (title !== undefined) updates.title = title;
+            if (description !== undefined) updates.description = description;
+            if (significance !== undefined) updates.significance = significance;
+            if (event_date !== undefined) updates.event_date = event_date;
+            if (category !== undefined) updates.category = category;
+
+            const { error: lifeErr } = await supabase
+                .from('life_events_timeline')
+                .update(updates)
+                .eq('id', eventId);
+
+            if (lifeErr) throw lifeErr;
+            return NextResponse.json({ success: true });
+        }
+
         if (raw_text !== undefined) {
             const shouldReprocess = body.reprocess_ai === true;
 

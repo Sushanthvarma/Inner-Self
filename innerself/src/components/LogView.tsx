@@ -111,8 +111,13 @@ export default function LogView() {
             const response = await fetch('/api/entries?type=all&limit=50');
             const data = await response.json();
             setEntries(data.entries || []);
+            if (!data.entries?.length) {
+                console.log('Debug: No entries found in API response', data);
+            }
         } catch (error) {
             console.error('Failed to fetch entries:', error);
+            // @ts-ignore
+            setEntries([{ id: 'error', raw_text: `Error: ${error.message}`, created_at: new Date().toISOString() }]);
         } finally {
             setLoading(false);
         }
