@@ -1,0 +1,28 @@
+{
+    "crons": [
+        {
+            "path": "/api/cleanup",
+            "schedule": "0 2 * * *"
+        },
+        {
+            "path": "/api/cron/self-talk-daily",
+            "schedule": "0 2 * * *"
+        },
+        {
+            "path": "/api/cron/daily-insights",
+            "schedule": "0 2 * * *"
+        },
+        {
+            "path": "/api/cron/weekly-report",
+            "schedule": "0 23 * * 0"
+        },
+        {
+            "path": "/api/cron/persona-summary-update",
+            "schedule": "0 23 * * 0"
+        },
+        {
+            "path": "/api/cron/void-mapper",
+            "schedule": "0 23 * * 0"
+        }
+    ]
+}

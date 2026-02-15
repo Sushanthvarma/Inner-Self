@@ -4,7 +4,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getServiceSupabase } from './supabase';
 import { extractFromEntry } from './ai';
-import { storeEmbedding, getRecentEntries, getPersonaSummary } from './embeddings';
+import { storeEmbedding, getRecentEntries, getPersonaSummary, findSimilarEntries } from './embeddings';
 import type { ExtractionResult, RawEntry } from '@/types';
 
 export interface ProcessResult {
@@ -18,14 +18,37 @@ export interface ProcessResult {
 // text → save raw → extract → save entities → embed → update people → detect events
 export async function processEntry(
     rawText: string,
-    source: 'text' | 'voice'
+    source: 'text' | 'voice',
+    options?: {
+        audio_url?: string | null;
+        audio_duration_sec?: number | null;
+    }
 ): Promise<ProcessResult> {
     const supabase = getServiceSupabase();
     const entryId = uuidv4();
 
     try {
+        // Step 0: Dedup check — reject duplicate text (ALL time, not just recent)
+        const { data: existing } = await supabase
+            .from('raw_entries')
+            .select('id')
+            .eq('raw_text', rawText)
+            .is('deleted_at', null)
+            .limit(1);
+
+        if (existing && existing.length > 0) {
+            console.log('[Pipeline] Duplicate text detected, skipping:', rawText.substring(0, 50));
+            return {
+                entryId: existing[0].id,
+                extraction: {} as ExtractionResult,
+                success: true,
+                error: 'Duplicate entry — already processed',
+            };
+        }
+
         // Step 1: Save raw entry (immutable)
-        const { error: rawError } = await supabase.from('raw_entries').insert({
+        console.log(`[Pipeline] Step 1: Saving raw entry ${entryId}...`);
+        const rawEntryData: Record<string, unknown> = {
             id: entryId,
             raw_text: rawText,
             source: source,
@@ -33,20 +56,48 @@ export async function processEntry(
                 entry_length_chars: rawText.length,
                 time_of_day: getTimeOfDay(),
             },
-        });
+        };
+
+        // Attach audio metadata if present (voice entries with Whisper)
+        if (options?.audio_url) {
+            rawEntryData.audio_url = options.audio_url;
+        }
+        if (options?.audio_duration_sec) {
+            rawEntryData.audio_duration_sec = options.audio_duration_sec;
+        }
+
+        const { error: rawError } = await supabase.from('raw_entries').insert(rawEntryData);
 
         if (rawError) throw new Error(`Raw entry save failed: ${rawError.message}`);
 
         // Step 2: Get context for Claude
-        const [recentContext, personaSummary] = await Promise.all([
-            getRecentEntries(10),
-            getPersonaSummary(),
-        ]);
+        console.log('[Pipeline] Step 2: Fetching context...');
+        let recentContext = '';
+        let personaSummary = '';
+        try {
+            let similarContext = '';
+            [recentContext, personaSummary, similarContext] = await Promise.all([
+                getRecentEntries(5), // Reduced recent count to make room for similar
+                getPersonaSummary(),
+                findSimilarEntries(rawText, 5)
+            ]);
+
+            // Combine contexts
+            if (similarContext) {
+                recentContext = `RECENT CHRONOLOGICAL ENTRIES:\n${recentContext}\n\nSIMILAR PAST ENTRIES (RAG):\n${similarContext}`;
+            }
+        } catch (ctxError) {
+            console.error('[Pipeline] Context fetch failed (continuing without):', ctxError);
+        }
 
         // Step 3: Run Claude extraction
+        console.log('[Pipeline] Step 3: Running Claude extraction...');
         const extraction = await extractFromEntry(rawText, recentContext, personaSummary);
+        console.log('[Pipeline] Step 3 done. Title:', extraction.title, '| Category:', extraction.category);
+        console.log('[Pipeline] is_task:', extraction.is_task, '| people:', extraction.people_mentioned?.length || 0);
 
-        // Step 4: Save extracted entities
+        // Step 4: Save extracted entities (CRITICAL — must succeed)
+        console.log('[Pipeline] Step 4: Saving extracted entities...');
         const { error: extractError } = await supabase
             .from('extracted_entities')
             .insert({
@@ -69,42 +120,111 @@ export async function processEntry(
                 growth_edge: extraction.growth_edge,
                 identity_persona: extraction.identity_persona,
                 body_signals: extraction.body_signals,
-                is_task: extraction.is_task,
-                task_status: extraction.task_status,
+                is_task: extraction.is_task || false,
+                task_status: extraction.is_task ? (extraction.task_status || 'pending') : null,
                 task_due_date: extraction.task_due_date,
-                people_mentioned: extraction.people_mentioned,
                 ai_response: extraction.ai_response,
-                ai_persona_used: extraction.ai_persona_selected,
+                ai_persona_used: extraction.ai_persona_used,
                 follow_up_question: extraction.follow_up_question,
             });
 
-        if (extractError)
+        if (extractError) {
+            console.error('[Pipeline] Step 4 FAILED:', extractError.message);
             throw new Error(`Extraction save failed: ${extractError.message}`);
+        }
+        console.log('[Pipeline] Step 4 done.');
+
+        // === NON-CRITICAL STEPS: Failures are logged but don't kill the pipeline ===
 
         // Step 5: Generate and store embedding
-        const embeddingText = `${extraction.title}. ${extraction.content}`;
-        await storeEmbedding(entryId, embeddingText, {
-            category: extraction.category,
-            mood: extraction.mood_score,
-            date: new Date().toISOString().split('T')[0],
-            people: extraction.people_mentioned.map((p) => p.name),
-            persona: extraction.identity_persona,
-        });
+        try {
+            console.log('[Pipeline] Step 5: Generating embedding...');
+            const embeddingText = `${extraction.title}. ${extraction.content}`;
+            await storeEmbedding(entryId, embeddingText, {
+                category: extraction.category,
+                mood: extraction.mood_score,
+                date: new Date().toISOString().split('T')[0],
+                people: (extraction.people_mentioned || []).map((p) => p.name),
+                persona: extraction.identity_persona,
+            });
+            console.log('[Pipeline] Step 5 done.');
+        } catch (embError) {
+            console.error('[Pipeline] Step 5 FAILED (embedding) — continuing:', embError instanceof Error ? embError.message : embError);
+        }
 
         // Step 6: Update people map
-        if (extraction.people_mentioned.length > 0) {
-            await updatePeopleMap(extraction.people_mentioned);
+        try {
+            if (extraction.people_mentioned && extraction.people_mentioned.length > 0) {
+                console.log('[Pipeline] Step 6: Updating people map with', extraction.people_mentioned.length, 'people...');
+                await updatePeopleMap(extraction.people_mentioned);
+                console.log('[Pipeline] Step 6 done.');
+            } else {
+                console.log('[Pipeline] Step 6: No people to update.');
+            }
+        } catch (peopleError) {
+            console.error('[Pipeline] Step 6 FAILED (people map) — continuing:', peopleError instanceof Error ? peopleError.message : peopleError);
         }
+
+        // Step 6b: Update Belief System
+        try {
+            if (extraction.beliefs_revealed && extraction.beliefs_revealed.length > 0) {
+                console.log('[Pipeline] Step 6b: Updating belief system with', extraction.beliefs_revealed.length, 'beliefs...');
+                await updateBeliefSystem(extraction.beliefs_revealed, entryId);
+                console.log('[Pipeline] Step 6b done.');
+            }
+        } catch (beliefError) {
+            console.error('[Pipeline] Step 6b FAILED (belief system) — continuing:', beliefError instanceof Error ? beliefError.message : beliefError);
+        }
+
 
         // Step 7: Store life event if detected
-        if (extraction.life_event_detected) {
-            await storeLifeEvent(extraction.life_event_detected, entryId);
+        /* 
+        NOTE: Life Event detection removed from Priority 1 extraction prompt.
+        To be re-implemented in background pipeline.
+        try {
+            if (extraction.life_event_detected) {
+                console.log('[Pipeline] Step 7: Storing life event...');
+                await storeLifeEvent(extraction.life_event_detected, entryId);
+                console.log('[Pipeline] Step 7 done.');
+            } else {
+                console.log('[Pipeline] Step 7: No life event detected.');
+            }
+        } catch (eventError) {
+            console.error('[Pipeline] Step 7 FAILED (life event) — continuing:', eventError instanceof Error ? eventError.message : eventError);
         }
+        */
 
         // Step 8: Store insights
-        if (extraction.insights.length > 0) {
-            await storeInsights(extraction.insights, entryId);
+        /*
+        NOTE: Insights generation removed from Priority 1 extraction prompt.
+        try {
+            if (extraction.insights && extraction.insights.length > 0) {
+                console.log('[Pipeline] Step 8: Storing', extraction.insights.length, 'insights...');
+                await storeInsights(extraction.insights, entryId);
+                console.log('[Pipeline] Step 8 done.');
+            } else {
+                console.log('[Pipeline] Step 8: No insights to store.');
+            }
+        } catch (insightError) {
+            console.error('[Pipeline] Step 8 FAILED (insights) — continuing:', insightError instanceof Error ? insightError.message : insightError);
         }
+        */
+
+        // Step 9: Store health metrics
+        /*
+        NOTE: Health metrics extraction removed from Priority 1 extraction prompt.
+        try {
+            if (extraction.health_metrics && extraction.health_metrics.length > 0) {
+                console.log('[Pipeline] Step 9: Storing', extraction.health_metrics.length, 'health metrics...');
+                await storeHealthMetrics(extraction.health_metrics, entryId);
+                console.log('[Pipeline] Step 9 done.');
+            }
+        } catch (healthError) {
+            console.error('[Pipeline] Step 9 FAILED (health) — continuing:', healthError instanceof Error ? healthError.message : healthError);
+        }
+        */
+
+        console.log('[Pipeline] Complete for entry', entryId);
 
         return {
             entryId,
@@ -112,7 +232,7 @@ export async function processEntry(
             success: true,
         };
     } catch (error) {
-        console.error('Processing pipeline error:', error);
+        console.error('[Pipeline] FATAL ERROR for entry', entryId, ':', error);
         return {
             entryId,
             extraction: {} as ExtractionResult,
@@ -123,73 +243,81 @@ export async function processEntry(
 }
 
 // ---- Update People Map ----
-async function updatePeopleMap(
+export async function updatePeopleMap(
     people: { name: string; relationship: string; sentiment: string; context: string }[]
 ): Promise<void> {
     const supabase = getServiceSupabase();
 
     for (const person of people) {
-        const sentimentValue = sentimentToNumber(person.sentiment);
+        try {
+            const sentimentValue = sentimentToNumber(person.sentiment);
 
-        // Check if person exists
-        const { data: existing } = await supabase
-            .from('people_map')
-            .select('*')
-            .eq('name', person.name)
-            .single();
-
-        if (existing) {
-            // Update existing person
-            const newHistory = [
-                ...(existing.sentiment_history || []),
-                {
-                    date: new Date().toISOString(),
-                    sentiment: sentimentValue,
-                    context: person.context,
-                },
-            ];
-
-            const allSentiments = newHistory.map(
-                (h: { sentiment: number }) => h.sentiment
-            );
-            const avgSentiment =
-                allSentiments.reduce((a: number, b: number) => a + b, 0) /
-                allSentiments.length;
-
-            await supabase
+            // Check if person exists (case-insensitive)
+            const { data: existing } = await supabase
                 .from('people_map')
-                .update({
-                    last_mentioned: new Date().toISOString(),
-                    mention_count: existing.mention_count + 1,
-                    sentiment_history: newHistory,
-                    sentiment_avg: avgSentiment,
-                    relationship: person.relationship || existing.relationship,
-                })
-                .eq('id', existing.id);
-        } else {
-            // Create new person
-            await supabase.from('people_map').insert({
-                id: uuidv4(),
-                name: person.name,
-                relationship: person.relationship,
-                first_mentioned: new Date().toISOString(),
-                last_mentioned: new Date().toISOString(),
-                mention_count: 1,
-                sentiment_history: [
+                .select('*')
+                .ilike('name', person.name)
+                .single();
+
+            if (existing) {
+                // Update existing person
+                const newHistory = [
+                    ...(existing.sentiment_history || []),
                     {
                         date: new Date().toISOString(),
                         sentiment: sentimentValue,
                         context: person.context,
                     },
-                ],
-                sentiment_avg: sentimentValue,
-                tags: [],
-            });
+                ];
+
+                const allSentiments = newHistory.map(
+                    (h: { sentiment: number }) => h.sentiment
+                );
+                const avgSentiment =
+                    allSentiments.reduce((a: number, b: number) => a + b, 0) /
+                    allSentiments.length;
+
+                await supabase
+                    .from('people_map')
+                    .update({
+                        last_mentioned: new Date().toISOString(),
+                        mention_count: existing.mention_count + 1,
+                        sentiment_history: newHistory,
+                        sentiment_avg: avgSentiment,
+                        relationship: person.relationship || existing.relationship,
+                    })
+                    .eq('id', existing.id);
+
+                console.log(`[People] Updated: ${person.name}`);
+            } else {
+                // Create new person
+                await supabase.from('people_map').insert({
+                    id: uuidv4(),
+                    name: person.name,
+                    relationship: person.relationship,
+                    first_mentioned: new Date().toISOString(),
+                    last_mentioned: new Date().toISOString(),
+                    mention_count: 1,
+                    sentiment_history: [
+                        {
+                            date: new Date().toISOString(),
+                            sentiment: sentimentValue,
+                            context: person.context,
+                        },
+                    ],
+                    sentiment_avg: sentimentValue,
+                    tags: [],
+                });
+
+                console.log(`[People] Created: ${person.name} (${person.relationship})`);
+            }
+        } catch (err) {
+            console.error(`[People] Error processing ${person.name}:`, err instanceof Error ? err.message : err);
         }
     }
 }
 
-// ---- Store Life Event ----
+// ---- Store Life Event (with dedup) ----
 async function storeLifeEvent(
     event: {
         title: string;
@@ -203,6 +331,18 @@ async function storeLifeEvent(
 ): Promise<void> {
     const supabase = getServiceSupabase();
 
+    // Dedup: Check if a life event with the same title already exists
+    const { data: existingEvent } = await supabase
+        .from('life_events_timeline')
+        .select('id')
+        .ilike('title', event.title)
+        .limit(1);
+
+    if (existingEvent && existingEvent.length > 0) {
+        console.log(`[LifeEvent] Duplicate detected ("${event.title}"), skipping insert.`);
+        return;
+    }
+
     await supabase.from('life_events_timeline').insert({
         id: uuidv4(),
         event_date: new Date().toISOString().split('T')[0],
@@ -214,28 +354,149 @@ async function storeLifeEvent(
         people_involved: event.people_involved,
         source_entry_ids: [sourceEntryId],
     });
+    console.log(`[LifeEvent] Created: "${event.title}"`);
 }
 
-// ---- Store Insights ----
+// ---- Store Insights (with dedup) ----
 async function storeInsights(
     insights: string[],
     sourceEntryId: string
 ): Promise<void> {
     const supabase = getServiceSupabase();
 
-    const insightRows = insights.map((text) => ({
+    for (const text of insights) {
+        // Dedup: Check if similar insight already exists
+        const { data: existing } = await supabase
+            .from('insights')
+            .select('id')
+            .eq('insight_text', text)
+            .limit(1);
+
+        if (existing && existing.length > 0) {
+            console.log(`[Insights] Duplicate detected, skipping: "${text.substring(0, 50)}..."`);
+            continue;
+        }
+
+        await supabase.from('insights').insert({
+            id: uuidv4(),
+            insight_text: text,
+            type: 'auto_extracted',
+            source_entry_id: sourceEntryId,
+        });
+    }
+}
+
+// ---- Store Health Metrics ----
+async function storeHealthMetrics(
+    metrics: { metric: string; value: string; unit: string; status: string; date: string }[],
+    sourceEntryId: string
+): Promise<void> {
+    const supabase = getServiceSupabase();
+
+    const rows = metrics.map(m => ({
         id: uuidv4(),
-        insight_text: text,
-        type: 'auto_extracted',
+        metric_name: m.metric,
+        value: m.value,
+        unit: m.unit,
+        status: m.status,
+        measured_at: m.date || new Date().toISOString().split('T')[0],
         source_entry_id: sourceEntryId,
     }));
 
-    await supabase.from('insights').insert(insightRows);
+    const { error } = await supabase.from('health_metrics').insert(rows);
+    if (error) {
+        throw new Error(`Health metrics insert failed: ${error.message}`);
+    }
+    console.log(`[Health] Stored ${metrics.length} metrics.`);
+}
+
+// ---- Background Processing Pipeline ----
+export async function processBackgroundFeatures(
+    entryId: string,
+    rawText: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        console.log(`[Background] Starting deep analysis for entry ${entryId}...`);
+
+        // 1. Get context (lightweight)
+        const recentContext = await getRecentEntries(3);
+
+        // 2. Extract features
+        // Dynamic import to avoid circular dependency if any
+        const { extractBackgroundFeatures } = await import('./ai');
+        const features = await extractBackgroundFeatures(rawText, recentContext);
+
+        console.log(`[Background] Extracted: ${features.life_event_detected ? '1 Life Event' : '0 Events'}, ${features.health_metrics.length} Health Metrics, ${features.insights.length} Insights`);
+
+        // 3. Store results
+        if (features.life_event_detected) {
+            await storeLifeEvent(features.life_event_detected, entryId);
+        }
+
+        if (features.health_metrics.length > 0) {
+            await storeHealthMetrics(features.health_metrics, entryId);
+        }
+
+        if (features.insights.length > 0) {
+            await storeInsights(features.insights, entryId);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error(`[Background] Error processing entry ${entryId}:`, error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+// ---- Update Belief System (with dedup) ----
+export async function updateBeliefSystem(
+    beliefs: string[],
+    sourceEntryId: string
+): Promise<void> {
+    const supabase = getServiceSupabase();
+
+    for (const beliefText of beliefs) {
+        try {
+            // Check if belief exists (simple case-insensitive match for now)
+            const { data: existing } = await supabase
+                .from('belief_system')
+                .select('*')
+                .ilike('belief_text', beliefText)
+                .single();
+
+            if (existing) {
+                // Reinforce existing belief
+                await supabase
+                    .from('belief_system')
+                    .update({
+                        last_reinforced: new Date().toISOString(),
+                        reinforcement_count: existing.reinforcement_count + 1,
+                        status: 'active'
+                    })
+                    .eq('id', existing.id);
+                console.log(`[Belief] Reinforced: "${beliefText.substring(0, 30)}..."`);
+            } else {
+                // Create new belief
+                await supabase.from('belief_system').insert({
+                    id: uuidv4(),
+                    belief_text: beliefText,
+                    domain: 'general', // Default for now
+                    first_surfaced: new Date().toISOString(),
+                    last_reinforced: new Date().toISOString(),
+                    reinforcement_count: 1,
+                    status: 'active'
+                });
+                console.log(`[Belief] Created: "${beliefText.substring(0, 30)}..."`);
+            }
+        } catch (err) {
+            console.error(`[Belief] Error processing "${beliefText.substring(0, 20)}...":`, err instanceof Error ? err.message : err);
+        }
+    }
 }
 
 // ---- Helpers ----
 function sentimentToNumber(sentiment: string): number {
-    switch (sentiment.toLowerCase()) {
+    switch ((sentiment || '').toLowerCase()) {
         case 'positive':
             return 8;
         case 'neutral':

@@ -59,12 +59,15 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabase
             .from('raw_entries')
             .select(`
-        id, created_at, raw_text, source,
+        id, created_at, raw_text, source, audio_url, audio_duration_sec,
         extracted_entities(
           id, category, title, content, mood_score,
           surface_emotion, deeper_emotion, energy_level,
           identity_persona, ai_response, ai_persona_used,
-          is_task, task_status, people_mentioned
+          is_task, task_status, people_mentioned, beliefs_revealed
+        ),
+        health_metrics(
+          id, metric_name, value, unit, status
         )
       `)
             .is('deleted_at', null)
@@ -82,23 +85,81 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// PATCH: Update task status
+// PATCH: Update task status or entry content
 export async function PATCH(request: NextRequest) {
     try {
-        const { id, task_status } = await request.json();
+        const body = await request.json();
+        const { id, task_status, raw_text, title, content } = body;
         const supabase = getServiceSupabase();
 
+        if (task_status !== undefined) {
+            // Update task status
+            const { error } = await supabase
+                .from('extracted_entities')
+                .update({ task_status })
+                .eq('id', id);
+            if (error) throw error;
+            return NextResponse.json({ success: true });
+        }
+
+        if (raw_text !== undefined) {
+            // Update the raw entry text
+            const { error: rawErr } = await supabase
+                .from('raw_entries')
+                .update({ raw_text })
+                .eq('id', id);
+            if (rawErr) throw rawErr;
+
+            // Also update extracted entity title/content if provided
+            if (title !== undefined || content !== undefined) {
+                const updates: Record<string, unknown> = {};
+                if (title !== undefined) updates.title = title;
+                if (content !== undefined) updates.content = content;
+
+                const { error: entErr } = await supabase
+                    .from('extracted_entities')
+                    .update(updates)
+                    .eq('entry_id', id);
+                if (entErr) console.error('Entity update error:', entErr);
+            }
+
+            return NextResponse.json({ success: true });
+        }
+
+        return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+    } catch (error) {
+        console.error('Update entry error:', error);
+        return NextResponse.json(
+            { error: 'Failed to update entry' },
+            { status: 500 }
+        );
+    }
+}
+
+// DELETE: Soft-delete a raw entry
+export async function DELETE(request: NextRequest) {
+    try {
+        const { id } = await request.json();
+        const supabase = getServiceSupabase();
+
+        if (!id) {
+            return NextResponse.json({ error: 'No id provided' }, { status: 400 });
+        }
+
+        // Soft-delete: set deleted_at
         const { error } = await supabase
-            .from('extracted_entities')
-            .update({ task_status })
+            .from('raw_entries')
+            .update({ deleted_at: new Date().toISOString() })
             .eq('id', id);
 
         if (error) throw error;
+
+        console.log('[Entries] Soft-deleted entry:', id);
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error('Update task error:', error);
+        console.error('Delete entry error:', error);
         return NextResponse.json(
-            { error: 'Failed to update task' },
+            { error: 'Failed to delete entry' },
             { status: 500 }
         );
     }

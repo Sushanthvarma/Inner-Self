@@ -9,7 +9,7 @@ const envPath = path.resolve(__dirname, '../.env.local');
 const envConfig = dotenv.parse(fs.readFileSync(envPath));
 
 async function testGeminiSDK() {
-    console.log('Testing Google Gemini SDK with gemini-2.0-flash...');
+    console.log('Testing Google Gemini SDK with gemini-2.0-flash (New Key)...');
 
     if (!envConfig.GEMINI_API_KEY) {
         console.error('❌ Missing GEMINI_API_KEY');
@@ -17,7 +17,7 @@ async function testGeminiSDK() {
     }
 
     const genAI = new GoogleGenerativeAI(envConfig.GEMINI_API_KEY);
-    const modelName = 'gemini-2.0-flash-lite-001';
+    const modelName = 'gemini-2.0-flash';
 
     try {
         const model = genAI.getGenerativeModel({ model: modelName });

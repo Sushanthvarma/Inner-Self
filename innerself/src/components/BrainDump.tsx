@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import VoiceRecorder from './VoiceRecorder';
+import DeepeningQuestionCard from './DeepeningQuestionCard';
 
 interface BrainDumpProps {
     onProcessingComplete: (result: ProcessResult) => void;
@@ -24,26 +25,74 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
     const [text, setText] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [processingStep, setProcessingStep] = useState('');
     const [lastResult, setLastResult] = useState<ProcessResult | null>(null);
     const [mode, setMode] = useState<'idle' | 'typing' | 'voice'>('idle');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const audioBlobRef = useRef<Blob | null>(null);
 
     const handleTranscript = (transcript: string) => {
         setText(transcript);
         setMode('typing'); // Switch to edit mode after voice
     };
 
+    const handleAudioBlob = (blob: Blob) => {
+        audioBlobRef.current = blob;
+        console.log(`[BrainDump] Audio blob received: ${(blob.size / 1024).toFixed(1)}KB`);
+    };
+
     const handleSubmit = async () => {
         if (!text.trim() || isProcessing) return;
 
         setIsProcessing(true);
+        const isVoice = mode === 'voice' || audioBlobRef.current !== null;
+
         try {
+            let audioUrl: string | null = null;
+            let audioDuration: number | null = null;
+
+            // If we have an audio blob, transcribe via Whisper and save audio
+            if (audioBlobRef.current) {
+                setProcessingStep('Saving audio & transcribing...');
+                try {
+                    const formData = new FormData();
+                    formData.append('audio', audioBlobRef.current, 'recording.webm');
+
+                    const transcribeRes = await fetch('/api/transcribe', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    const transcribeData = await transcribeRes.json();
+
+                    if (transcribeRes.ok) {
+                        audioUrl = transcribeData.audio_url;
+                        audioDuration = transcribeData.audio_duration_sec;
+
+                        // Use Whisper transcript if available (more accurate for Hinglish)
+                        if (transcribeData.transcript) {
+                            setText(transcribeData.transcript);
+                        }
+                        console.log(`[BrainDump] Whisper transcript: "${transcribeData.transcript?.substring(0, 60)}..."`);
+                    } else {
+                        console.warn('[BrainDump] Transcribe failed, using browser transcript:', transcribeData.error);
+                    }
+                } catch (err) {
+                    console.warn('[BrainDump] Transcribe API unavailable, using browser transcript:', err);
+                }
+            }
+
+            // Process the entry through the extraction pipeline
+            setProcessingStep('Analyzing emotions & patterns...');
+            const processText = text.trim();
             const response = await fetch('/api/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: text.trim(),
-                    source: mode === 'voice' ? 'voice' : 'text',
+                    text: processText,
+                    source: isVoice ? 'voice' : 'text',
+                    audio_url: audioUrl,
+                    audio_duration_sec: audioDuration,
                 }),
             });
 
@@ -54,11 +103,24 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                 onProcessingComplete(result);
                 setText('');
                 setMode('idle');
+                audioBlobRef.current = null;
+
+                // Fire-and-forget background processing (Deep Analysis)
+                // This triggers Life Event, Health, and Insight extraction
+                fetch('/api/process/background', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        entryId: result.entryId,
+                        text: processText,
+                    }),
+                }).catch(err => console.error('[BrainDump] Background trigger failed:', err));
             }
         } catch (error) {
             console.error('Processing error:', error);
         } finally {
             setIsProcessing(false);
+            setProcessingStep('');
         }
     };
 
@@ -76,12 +138,15 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                 <p className="dump-subtitle">Say it. Type it. Let it out.</p>
             </div>
 
-            {/* Main Input Area */}
+            {/* Reflection Question */}
+            <DeepeningQuestionCard />
+
             <div className="dump-input-area">
                 {mode === 'idle' ? (
                     <div className="dump-start">
                         <VoiceRecorder
                             onTranscript={handleTranscript}
+                            onAudioBlob={handleAudioBlob}
                             onRecordingChange={(recording) => {
                                 setIsRecording(recording);
                                 if (recording) setMode('voice');
@@ -118,6 +183,7 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                                 onClick={() => {
                                     setText('');
                                     setMode('idle');
+                                    audioBlobRef.current = null;
                                 }}
                                 disabled={isProcessing}
                             >
@@ -127,6 +193,7 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                             <div className="dump-actions-right">
                                 <VoiceRecorder
                                     onTranscript={(t) => setText((prev) => prev + ' ' + t)}
+                                    onAudioBlob={handleAudioBlob}
                                     onRecordingChange={setIsRecording}
                                 />
                                 <button
@@ -183,7 +250,7 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                         <div className="brain-animation">
                             <span>🧠</span>
                         </div>
-                        <p>Processing your thoughts...</p>
+                        <p>{processingStep || 'Processing your thoughts...'}</p>
                         <p className="processing-sub">
                             Analyzing emotions, patterns, and meaning
                         </p>

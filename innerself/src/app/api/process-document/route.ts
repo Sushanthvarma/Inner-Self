@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Call AI
-        console.log(`Processing doc ${docId} with Gemini...`);
+        console.log(`Processing doc ${docId} with Claude...`);
         const result = await processDocumentContent(doc.extracted_text, doc.file_type, doc.file_name);
 
         let parsed;
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
                 const { data: existingPerson } = await supabase
                     .from('people_map')
                     .select('*')
-                    .eq('name', p.name)
+                    .ilike('name', p.name)
                     .single();
 
                 if (existingPerson) {
@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
                     category: e.category || 'personal',
                     emotions: e.emotions || [],
                     source_entry_ids: [docId] // Link back to document! (Schema allows this)
+
                 })
             );
 
@@ -149,6 +150,25 @@ export async function POST(request: NextRequest) {
             if (eventsError) {
                 console.error('Error inserting life events:', eventsError);
                 throw new Error(`Failed to insert life events: ${eventsError.message}`);
+            }
+        }
+
+        // Health Metrics
+        if (parsed.health_metrics && parsed.health_metrics.length > 0) {
+            const metricsRows = parsed.health_metrics.map((m: any) => ({
+                id: uuidv4(),
+                metric_name: m.metric,
+                value: String(m.value),
+                unit: m.unit,
+                status: m.status,
+                measured_at: m.date || new Date().toISOString().split('T')[0],
+                source_doc_id: docId
+            }));
+
+            const { error: metricsError } = await supabase.from('health_metrics').insert(metricsRows);
+            if (metricsError) {
+                console.error('Error inserting health metrics (table likely missing):', metricsError.message);
+                // Don't fail the whole process
             }
         }
 

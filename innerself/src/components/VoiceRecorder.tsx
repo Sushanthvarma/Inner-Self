@@ -5,17 +5,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 interface VoiceRecorderProps {
     onTranscript: (text: string) => void;
     onRecordingChange: (isRecording: boolean) => void;
+    onAudioBlob?: (blob: Blob) => void; // New: pass audio blob for Whisper + Storage
 }
 
 export default function VoiceRecorder({
     onTranscript,
     onRecordingChange,
+    onAudioBlob,
 }: VoiceRecorderProps) {
     const [isRecording, setIsRecording] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState('');
     const [isSupported, setIsSupported] = useState(true);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
     const fullTranscriptRef = useRef('');
 
     useEffect(() => {
@@ -79,7 +83,7 @@ export default function VoiceRecorder({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const startRecording = useCallback(() => {
+    const startRecording = useCallback(async () => {
         if (!recognitionRef.current) return;
 
         fullTranscriptRef.current = '';
@@ -88,12 +92,48 @@ export default function VoiceRecorder({
         setIsRecording(true);
         onRecordingChange(true);
 
+        // Start SpeechRecognition (real-time text preview)
         try {
             recognitionRef.current.start();
         } catch {
             // Already started
         }
-    }, [onRecordingChange]);
+
+        // Start MediaRecorder (audio capture for Whisper + Storage)
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/mp4')
+                    ? 'audio/mp4'
+                    : 'audio/webm';
+
+            const mediaRecorder = new MediaRecorder(stream, { mimeType });
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                // Stop all tracks to release mic
+                stream.getTracks().forEach(track => track.stop());
+
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                if (audioBlob.size > 0 && onAudioBlob) {
+                    console.log(`[VoiceRecorder] Audio captured: ${(audioBlob.size / 1024).toFixed(1)}KB`);
+                    onAudioBlob(audioBlob);
+                }
+            };
+
+            mediaRecorder.start(1000); // Collect data every second
+            mediaRecorderRef.current = mediaRecorder;
+        } catch (err) {
+            console.warn('[VoiceRecorder] MediaRecorder not available, continuing with SpeechRecognition only:', err);
+        }
+    }, [onRecordingChange, onAudioBlob]);
 
     const stopRecording = useCallback(() => {
         if (!recognitionRef.current) return;
@@ -101,6 +141,11 @@ export default function VoiceRecorder({
         setIsRecording(false);
         onRecordingChange(false);
         recognitionRef.current.stop();
+
+        // Stop MediaRecorder (triggers onstop → creates blob)
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+        }
 
         const finalText = fullTranscriptRef.current.trim();
         if (finalText) {

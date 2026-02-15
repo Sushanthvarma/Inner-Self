@@ -316,8 +316,8 @@ export interface ExtractionResult {
   content: string;
   mood_score: number;
   surface_emotion: string;
-  deeper_emotion: string;
-  core_need: string;
+  deeper_emotion: string | null;
+  core_need: string | null;
   triggers: string[];
   defense_mechanism: string | null;
   self_talk_tone: 'critical' | 'neutral' | 'compassionate';
@@ -332,18 +332,9 @@ export interface ExtractionResult {
   task_status: 'pending' | 'done' | 'cancelled' | null;
   task_due_date: string | null;
   people_mentioned: PersonMention[];
-  ai_persona_selected: AIPersona;
+  ai_persona_used: AIPersona;
   ai_response: string;
   follow_up_question: string | null;
-  life_event_detected: {
-    title: string;
-    description: string;
-    significance: number;
-    category: string;
-    emotions: string[];
-    people_involved: string[];
-  } | null;
-  insights: string[];
 }
 
 // --- App State ---
