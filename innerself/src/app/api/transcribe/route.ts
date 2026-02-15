@@ -1,79 +1,66 @@
 // ============================================================
-// INNER SELF — Process API Route
-// Brain dump → Claude extraction → embeddings → storage
+// INNER SELF — Transcribe API
+// Audio file → OpenAI Whisper → Text
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
-import { processEntry } from '@/lib/extraction';
+import OpenAI from 'openai';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
-        const { text, source, audio_url, audio_duration_sec } = await request.json();
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
 
-        if (!text || text.trim().length === 0) {
-            return NextResponse.json(
-                { error: 'No text provided' },
-                { status: 400 }
-            );
+        if (!file) {
+            return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
-        console.log(`[Process API] Processing entry: "${text.trim().substring(0, 60)}..." | source: ${source || 'text'}`);
-        const result = await processEntry(text.trim(), source || 'text', {
-            audio_url: audio_url || null,
-            audio_duration_sec: audio_duration_sec || null,
+        console.log(`[Transcribe] Received file: ${file.name} (${file.size} bytes)`);
+
+        // 1. Convert File to Buffer
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+
+        // 2. Save temporarily to disk (OpenAI needs a file path or ReadStream)
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `${uuidv4()}.webm`);
+        fs.writeFileSync(tempFilePath, buffer);
+
+        // 3. Send to OpenAI Whisper
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(tempFilePath),
+            model: 'whisper-1',
+            language: 'en', // Force English or detect
         });
 
-        if (!result.success) {
-            console.error('[Process API] Processing failed:', result.error);
-            return NextResponse.json(
-                { error: result.error || 'Processing failed' },
-                { status: 500 }
-            );
-        }
+        // 4. Cleanup
+        fs.unlinkSync(tempFilePath);
 
-        const ext = result.extraction;
-        console.log('[Process API] Success! Title:', ext.title, '| Task:', ext.is_task);
+        /* 
+           NOTE: Audio Preservation is OFF to save storage costs.
+           If you want to save audio, upload `file` to Supabase Storage here
+           and return the public URL.
+        */
 
-        // Return FULL extraction — every field the frontend or any tab might need
+        console.log('[Transcribe] Success:', transcription.text.substring(0, 50) + '...');
+
         return NextResponse.json({
-            success: true,
-            entryId: result.entryId,
-            // Core
-            title: ext.title,
-            category: ext.category,
-            content: ext.content,
-            // Emotions
-            mood_score: ext.mood_score,
-            surface_emotion: ext.surface_emotion,
-            deeper_emotion: ext.deeper_emotion,
-            core_need: ext.core_need,
-            triggers: ext.triggers,
-            // Psychology
-            defense_mechanism: ext.defense_mechanism,
-            self_talk_tone: ext.self_talk_tone,
-            energy_level: ext.energy_level,
-            cognitive_pattern: ext.cognitive_pattern,
-            beliefs_revealed: ext.beliefs_revealed,
-            avoidance_signal: ext.avoidance_signal,
-            growth_edge: ext.growth_edge,
-            identity_persona: ext.identity_persona,
-            body_signals: ext.body_signals,
-            // Tasks
-            is_task: ext.is_task,
-            task_status: ext.task_status,
-            task_due_date: ext.task_due_date,
-            // People
-            people_mentioned: ext.people_mentioned,
-            // AI
-            ai_response: ext.ai_response,
-            ai_persona: ext.ai_persona_used,
-            follow_up_question: ext.follow_up_question,
+            text: transcription.text,
+            audio_url: null, // No storage
+            duration: 0 // Whisper doesn't return duration, frontend can send it if needed
         });
+
     } catch (error) {
-        console.error('Process API error:', error);
+        console.error('Transcription error:', error);
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: 'Transcription failed' },
             { status: 500 }
         );
     }

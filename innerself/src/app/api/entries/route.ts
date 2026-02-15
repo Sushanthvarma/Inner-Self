@@ -29,7 +29,20 @@ export async function GET(request: NextRequest) {
                 .range(offset, offset + limit - 1);
 
             if (error) throw error;
-            return NextResponse.json({ entries: data || [] });
+
+            // Compute staleness
+            const now = new Date();
+            const enhancedTasks = (data || []).map((task: any) => {
+                const created = new Date(task.created_at);
+                const ageDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+                return {
+                    ...task,
+                    age_days: ageDays,
+                    is_stale: task.task_status === 'pending' && ageDays > 14
+                };
+            });
+
+            return NextResponse.json({ entries: enhancedTasks });
         }
 
         if (type === 'life') {

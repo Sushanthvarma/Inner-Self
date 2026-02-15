@@ -266,6 +266,7 @@ export async function updatePeopleMap(
                     {
                         date: new Date().toISOString(),
                         sentiment: sentimentValue,
+                        raw_sentiment: person.sentiment,
                         context: person.context,
                     },
                 ];
@@ -302,6 +303,7 @@ export async function updatePeopleMap(
                         {
                             date: new Date().toISOString(),
                             sentiment: sentimentValue,
+                            raw_sentiment: person.sentiment,
                             context: person.context,
                         },
                     ],
@@ -495,19 +497,38 @@ export async function updateBeliefSystem(
 }
 
 // ---- Helpers ----
+// ---- Helpers ----
 function sentimentToNumber(sentiment: string): number {
-    switch ((sentiment || '').toLowerCase()) {
-        case 'positive':
-            return 8;
-        case 'neutral':
-            return 5;
-        case 'negative':
-            return 2;
-        case 'mixed':
-            return 5;
-        default:
-            return 5;
-    }
+    const s = (sentiment || '').toLowerCase();
+
+    // 1. Exact matches
+    const map: Record<string, number> = {
+        'positive': 8, 'joy': 9, 'grateful': 9, 'excited': 8, 'confident': 8,
+        'love': 9, 'proud': 9, 'happy': 8, 'determined': 8, 'peaceful': 7,
+        'neutral': 5, 'calm': 6, 'balanced': 5, 'indifferent': 5,
+        'negative': 2, 'angry': 2, 'frustrated': 3, 'sad': 3, 'anxious': 3,
+        'hurt': 2, 'betrayed': 1, 'guilty': 3, 'ashamed': 2, 'hopeless': 2
+    };
+
+    if (map[s]) return map[s];
+
+    // 2. Compound/Mixed handling
+    // Count positive/negative words
+    const positives = ['love', 'good', 'great', 'happy', 'joy', 'fun', 'win', 'safe', 'calm', 'proud'];
+    const negatives = ['bad', 'sad', 'hate', 'anger', 'angry', 'fear', 'hurt', 'pain', 'lost', 'hard'];
+
+    let score = 5;
+    let posCount = 0;
+    let negCount = 0;
+
+    positives.forEach(w => { if (s.includes(w)) posCount++; });
+    negatives.forEach(w => { if (s.includes(w)) negCount++; });
+
+    if (posCount > negCount) score = 7;
+    else if (negCount > posCount) score = 3;
+    else if (s.includes('mix') || s.includes('bittersweet')) score = 5;
+
+    return score;
 }
 
 function getTimeOfDay(): string {
