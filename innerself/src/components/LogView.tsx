@@ -570,7 +570,7 @@ export default function LogView() {
                                 setPersonFilter(null);
                             }}
                         >
-                            {CATEGORY_EMOJI[cat] || '📌'} {cat}
+                            {CATEGORY_EMOJI[cat] || '📌'} {cat.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                         </button>
                     ))}
                     {personFilter && (
@@ -929,7 +929,7 @@ export default function LogView() {
                                         className={`tag category-tag clickable ${categoryFilter === entity?.category ? 'active' : ''}`}
                                         onClick={(e) => entity?.category && handleCategoryTagClick(e, entity.category)}
                                     >
-                                        {entity?.category}
+                                        {(entity?.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                                     </span>
                                     {entity?.is_task && (
                                         <span className="tag task-tag">{entity.task_status || 'pending'}</span>

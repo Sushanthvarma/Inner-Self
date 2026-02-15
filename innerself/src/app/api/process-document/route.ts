@@ -154,12 +154,21 @@ export async function POST(request: NextRequest) {
                     // Title-based dedup: skip if similar title already exists
                     const newLower = validated.title.toLowerCase();
                     const prefix = newLower.substring(0, 40);
-                    const isDuplicate = existingTitles.some(existing =>
-                        existing === newLower ||
-                        existing.substring(0, 40) === prefix ||
-                        existing.includes(newLower) ||
-                        newLower.includes(existing)
-                    );
+                    const getKeywords = (s: string) => s.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w: string) => w.length >= 4);
+                    const newWords = getKeywords(newLower);
+                    const isDuplicate = existingTitles.some(existing => {
+                        if (existing === newLower) return true;
+                        if (existing.substring(0, 40) === prefix) return true;
+                        if (existing.includes(newLower) || newLower.includes(existing)) return true;
+                        // Semantic keyword overlap
+                        const existingWords = getKeywords(existing);
+                        if (existingWords.length >= 2 && newWords.length >= 2) {
+                            const overlap = newWords.filter((w: string) => existingWords.includes(w));
+                            const overlapRatio = overlap.length / Math.min(existingWords.length, newWords.length);
+                            if (overlapRatio >= 0.6 && overlap.length >= 2) return true;
+                        }
+                        return false;
+                    });
                     if (isDuplicate) {
                         console.log(`[ProcessDoc] Skipping duplicate event: "${validated.title}"`);
                         return null;

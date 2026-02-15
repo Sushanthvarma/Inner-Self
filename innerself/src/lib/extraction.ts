@@ -422,6 +422,16 @@ export async function storeLifeEvent(
             if (existingLower.substring(0, 40) === titlePrefix) return true;
             // Containment match (one contains the other)
             if (existingLower.includes(newLower) || newLower.includes(existingLower)) return true;
+            // Semantic keyword overlap: extract significant words (4+ chars) and check overlap
+            const getKeywords = (s: string) => s.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length >= 4);
+            const existingWords = getKeywords(existingLower);
+            const newWords = getKeywords(newLower);
+            if (existingWords.length >= 2 && newWords.length >= 2) {
+                const overlap = newWords.filter(w => existingWords.includes(w));
+                const overlapRatio = overlap.length / Math.min(existingWords.length, newWords.length);
+                // If 60%+ keywords match, it's likely a semantic duplicate
+                if (overlapRatio >= 0.6 && overlap.length >= 2) return true;
+            }
             return false;
         });
 

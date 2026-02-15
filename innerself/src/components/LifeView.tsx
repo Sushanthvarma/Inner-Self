@@ -78,6 +78,24 @@ const CATEGORY_COLORS: Record<string, string> = {
     personal_development: '#A78BFA',
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+    career: 'Career',
+    family: 'Family',
+    health: 'Health',
+    relationship: 'Relationship',
+    personal: 'Personal',
+    loss: 'Loss',
+    achievement: 'Achievement',
+    education: 'Education',
+    finance: 'Finance',
+    professional_achievement: 'Professional',
+    personal_development: 'Growth',
+};
+
+function formatCategory(cat: string): string {
+    return CATEGORY_LABELS[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 const getSignificanceColor = (n: number): string => {
     const colors: Record<number, string> = {
         1: '#3B82F6',
@@ -534,7 +552,7 @@ export default function LifeView() {
                                             style={{ color: CATEGORY_COLORS[cat] || '#6B7280' }}
                                             onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
                                         >
-                                            {cat} ({count})
+                                            {formatCategory(cat)} ({count})
                                         </span>
                                     ))}
                                 </div>
@@ -618,7 +636,7 @@ export default function LifeView() {
                                                         }}
                                                         onClick={() => setFilterCategory(event.category)}
                                                     >
-                                                        {event.category}
+                                                        {formatCategory(event.category)}
                                                     </span>
                                                     <span
                                                         className="sig-badge"
@@ -1020,7 +1038,7 @@ export default function LifeView() {
                                     >
                                         {Object.keys(CATEGORY_COLORS).map((c) => (
                                             <option key={c} value={c}>
-                                                {c.charAt(0).toUpperCase() + c.slice(1)}
+                                                {formatCategory(c)}
                                             </option>
                                         ))}
                                     </select>
