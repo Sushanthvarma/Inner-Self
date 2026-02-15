@@ -7,23 +7,41 @@ import { v4 as uuidv4 } from 'uuid';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// BUG 7: Validate date strings — catches 'null', 'unknown', 'N/A', empty, etc.
+// For health metrics: defaults to today (measurement date is always "now" if unknown)
 function validateDate(raw: string | null | undefined): string {
     if (!raw) return new Date().toISOString().split('T')[0];
     const s = raw.trim().toLowerCase();
     if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
         return new Date().toISOString().split('T')[0];
     }
-    // Check it's a plausible date format (YYYY-MM-DD or similar)
     if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
         return raw.trim().substring(0, 10);
     }
-    // Try parsing it
     const d = new Date(raw);
     if (!isNaN(d.getTime())) {
         return d.toISOString().split('T')[0];
     }
     return new Date().toISOString().split('T')[0];
+}
+
+// For LIFE EVENTS: returns null if date unknown. NEVER default to today for historical events.
+function validateDateNullable(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const s = raw.trim().toLowerCase();
+    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
+        return null;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+        return raw.trim().substring(0, 10);
+    }
+    if (/^\d{4}$/.test(raw.trim())) {
+        return raw.trim() + '-01-01';
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+    return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -155,7 +173,7 @@ export async function POST(request: NextRequest) {
             const eventRows = parsed.life_events.map(
                 (e: { title: string; description: string; significance: number; category: string; emotions: string[]; event_date?: string }) => ({
                     id: uuidv4(),
-                    event_date: validateDate(e.event_date),
+                    event_date: validateDateNullable(e.event_date),
                     title: e.title,
                     description: e.description,
                     significance: e.significance || 5,

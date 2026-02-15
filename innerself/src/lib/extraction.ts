@@ -15,6 +15,7 @@ export interface ProcessResult {
 }
 
 // BUG 7: Robust date validator — catches 'null', 'unknown', 'N/A' etc.
+// For health metrics: defaults to today (a measurement date is always "now" if unknown)
 function validateDate(raw: string | null | undefined): string {
     if (!raw) return new Date().toISOString().split('T')[0];
     const s = raw.trim().toLowerCase();
@@ -29,6 +30,28 @@ function validateDate(raw: string | null | undefined): string {
         return d.toISOString().split('T')[0];
     }
     return new Date().toISOString().split('T')[0];
+}
+
+// For LIFE EVENTS: returns null if date is unknown.
+// Per Glacier Doc: "NEVER default to today for historical events."
+function validateDateNullable(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const s = raw.trim().toLowerCase();
+    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
+        return null;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+        return raw.trim().substring(0, 10);
+    }
+    // Handle year-only: "2015" -> "2015-01-01"
+    if (/^\d{4}$/.test(raw.trim())) {
+        return raw.trim() + '-01-01';
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+    return null;
 }
 
 // ---- Full Processing Pipeline ----
@@ -414,8 +437,8 @@ async function storeLifeEvent(
         return;
     }
 
-    // BUG 7: Use robust validateDate helper
-    const eventDate = validateDate(event.event_date);
+    // Use nullable date — NEVER default to today for historical events
+    const eventDate = validateDateNullable(event.event_date);
 
     await supabase.from('life_events_timeline').insert({
         id: uuidv4(),
@@ -428,7 +451,7 @@ async function storeLifeEvent(
         people_involved: event.people_involved,
         source_entry_ids: [sourceEntryId],
     });
-    console.log(`[LifeEvent] Created: "${event.title}" on ${eventDate}`);
+    console.log(`[LifeEvent] Created: "${event.title}" on ${eventDate || 'unknown date'}`);
 }
 
 // ---- Store Insights (with dedup) ----
