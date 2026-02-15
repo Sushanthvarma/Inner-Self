@@ -342,43 +342,76 @@ export default function LifeView() {
                                 />
                                 <div className="event-content">
                                     {editingEventId === event.id ? (
-                                        <div className="edit-event-form" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <input
-                                                type="text"
-                                                value={editForm.title}
-                                                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                                style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
-                                            />
-                                            <textarea
-                                                value={editForm.description}
-                                                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                                style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px', minHeight: '60px' }}
-                                            />
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                        <div className="edit-event-form flex flex-col gap-3 mt-2 mb-2 p-3 bg-gray-900/50 rounded-lg border border-gray-700 animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Title</label>
                                                 <input
-                                                    type="date"
-                                                    value={editForm.event_date}
-                                                    onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
-                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
-                                                />
-                                                <select
-                                                    value={editForm.category}
-                                                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px' }}
-                                                >
-                                                    {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
-                                                </select>
-                                                <input
-                                                    type="number"
-                                                    min="1" max="10"
-                                                    value={editForm.significance}
-                                                    onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
-                                                    style={{ background: '#1F2937', color: 'white', border: '1px solid #374151', padding: '8px', borderRadius: '4px', width: '60px' }}
+                                                    type="text"
+                                                    value={editForm.title}
+                                                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                    className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    placeholder="Event Title"
                                                 />
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
-                                                <button onClick={() => setEditingEventId(null)} style={{ color: '#9CA3AF' }}>Cancel</button>
-                                                <button onClick={() => handleSaveEvent(event.id)} style={{ background: '#3B82F6', color: 'white', padding: '4px 12px', borderRadius: '4px' }}>Save</button>
+
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Description</label>
+                                                <textarea
+                                                    value={editForm.description}
+                                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                    className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
+                                                    placeholder="What happened?"
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={editForm.event_date}
+                                                        onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        style={{ colorScheme: 'dark' }}
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Category</label>
+                                                    <select
+                                                        value={editForm.category}
+                                                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    >
+                                                        {Object.keys(CATEGORY_COLORS).map(c => (
+                                                            <option key={c} value={c} className="bg-gray-800">{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Impact (1-10)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1" max="10"
+                                                        value={editForm.significance}
+                                                        onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
+                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end gap-3 mt-2 pt-2 border-t border-gray-700">
+                                                <button
+                                                    onClick={() => setEditingEventId(null)}
+                                                    className="px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={() => handleSaveEvent(event.id)}
+                                                    className="px-4 py-2 rounded-md text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all flex items-center gap-2"
+                                                >
+                                                    <span>Save Changes</span>
+                                                </button>
                                             </div>
                                         </div>
                                     ) : (
