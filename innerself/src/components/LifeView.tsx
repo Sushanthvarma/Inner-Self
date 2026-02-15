@@ -445,64 +445,63 @@ export default function LifeView() {
                                             </div>
                                         </div>
                                     )}
-                                    <>
-                                        <div className="event-date">
-                                            {new Date(event.event_date).toLocaleDateString('en-IN', {
-                                                day: 'numeric',
-                                                month: 'short',
-                                                year: 'numeric',
-                                            })}
-                                            {/* Show creation time if available, or just a label */}
-                                            {(event as any).created_at && (
-                                                <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
-                                                    (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+
+                                    <div className="event-date">
+                                        {new Date(event.event_date).toLocaleDateString('en-IN', {
+                                            day: 'numeric',
+                                            month: 'short',
+                                            year: 'numeric',
+                                        })}
+                                        {/* Show creation time if available, or just a label */}
+                                        {(event as any).created_at && (
+                                            <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
+                                                (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <h3 className="event-title">{event.title}</h3>
+                                        <button
+                                            onClick={() => handleEditClick(event)}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                                            title="Edit Event"
+                                        >
+                                            ✏️
+                                        </button>
+                                    </div>
+                                    <p className="event-description">{event.description}</p>
+                                    <div className="event-meta">
+                                        <span
+                                            className="event-category"
+                                            style={{
+                                                color: CATEGORY_COLORS[event.category] || '#6B7280',
+                                            }}
+                                        >
+                                            {event.category}
+                                        </span>
+                                        <span className="event-sig">
+                                            {'★'.repeat(Math.ceil(event.significance / 2))}
+                                        </span>
+                                    </div>
+                                    {event.emotions?.length > 0 && (
+                                        <div className="event-emotions">
+                                            {event.emotions.map((e, i) => (
+                                                <span key={i} className="emotion-chip">
+                                                    {e}
                                                 </span>
-                                            )}
+                                            ))}
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <h3 className="event-title">{event.title}</h3>
-                                            <button
-                                                onClick={() => handleEditClick(event)}
-                                                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
-                                                title="Edit Event"
-                                            >
-                                                ✏️
-                                            </button>
-                                        </div>
-                                        <p className="event-description">{event.description}</p>
-                                        <div className="event-meta">
-                                            <span
-                                                className="event-category"
-                                                style={{
-                                                    color: CATEGORY_COLORS[event.category] || '#6B7280',
-                                                }}
-                                            >
-                                                {event.category}
-                                            </span>
-                                            <span className="event-sig">
-                                                {'★'.repeat(Math.ceil(event.significance / 2))}
-                                            </span>
-                                        </div>
-                                        {event.emotions?.length > 0 && (
-                                            <div className="event-emotions">
-                                                {event.emotions.map((e, i) => (
-                                                    <span key={i} className="emotion-chip">
-                                                        {e}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {event.people_involved?.length > 0 && (
-                                            <div className="event-people">
-                                                {event.people_involved.map((p, i) => (
-                                                    <span key={i} className="person-chip">
-                                                        {p}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </>
                                     )}
+                                    {event.people_involved?.length > 0 && (
+                                        <div className="event-people">
+                                            {event.people_involved.map((p, i) => (
+                                                <span key={i} className="person-chip">
+                                                    {p}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
                                 </div>
                             </div>
 
