@@ -1,8 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import {
+    ResponsiveContainer,
+    ScatterChart,
+    Scatter,
+    XAxis,
+    YAxis,
+    ZAxis,
+    Tooltip,
+    Cell,
+} from 'recharts';
 
 interface LifeEventItem {
     id: string;
@@ -48,6 +58,35 @@ const CATEGORY_COLORS: Record<string, string> = {
     achievement: '#F59E0B',
 };
 
+const getSignificanceColor = (n: number): string => {
+    // Gradient from blue (1) to gold (10)
+    const colors: Record<number, string> = {
+        1: '#3B82F6',
+        2: '#3B8BDB',
+        3: '#4A94C0',
+        4: '#5A9DA5',
+        5: '#6BA68A',
+        6: '#8BAF6F',
+        7: '#ABB854',
+        8: '#CBC139',
+        9: '#E8D01E',
+        10: '#F59E0B',
+    };
+    return colors[Math.max(1, Math.min(10, Math.round(n)))] || '#6B7280';
+};
+
+const getSentimentLabel = (avg: number): { label: string; color: string } => {
+    if (avg >= 7) return { label: 'Positive', color: '#10B981' };
+    if (avg >= 4) return { label: 'Mixed', color: '#FBBF24' };
+    return { label: 'Tense', color: '#EF4444' };
+};
+
+const getSentimentColor = (avg: number): string => {
+    if (avg >= 7) return '#10B981';
+    if (avg >= 4) return '#FBBF24';
+    return '#EF4444';
+};
+
 import HealthDashboard from './HealthDashboard';
 
 export default function LifeView() {
@@ -62,8 +101,15 @@ export default function LifeView() {
     const [answeringGapId, setAnsweringGapId] = useState<string | null>(null);
     const [gapAnswer, setGapAnswer] = useState('');
 
+    // Filter state for Timeline
+    const [filterCategory, setFilterCategory] = useState<string | null>(null);
+    const [filterPerson, setFilterPerson] = useState<string | null>(null);
+    const [filterEmotion, setFilterEmotion] = useState<string | null>(null);
+
     // Track if biography has been fetched
     const biographyFetched = useRef(false);
+    // Track if gaps have been fetched on mount
+    const gapsFetched = useRef(false);
 
     // Editing State
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -72,7 +118,7 @@ export default function LifeView() {
         description: '',
         event_date: '',
         category: '',
-        significance: 5
+        significance: 5,
     });
 
     const handleEditClick = (event: LifeEventItem) => {
@@ -82,7 +128,7 @@ export default function LifeView() {
             description: event.description,
             event_date: event.event_date,
             category: event.category,
-            significance: event.significance
+            significance: event.significance,
         });
     };
 
@@ -93,13 +139,12 @@ export default function LifeView() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     eventId: id,
-                    ...editForm
-                })
+                    ...editForm,
+                }),
             });
 
             if (res.ok) {
-                // Update local state
-                setEvents(prev => prev.map(e => e.id === id ? { ...e, ...editForm } : e));
+                setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, ...editForm } : e)));
                 setEditingEventId(null);
             }
         } catch (error) {
@@ -108,22 +153,18 @@ export default function LifeView() {
         }
     };
 
-
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             if (activeTab === 'events') {
-                // Always re-fetch events — new data can come in from brain dumps and chat
                 const res = await fetch('/api/entries?type=life');
                 const data = await res.json();
                 setEvents(data.events || []);
             } else if (activeTab === 'people') {
-                // Always re-fetch people — new mentions can come from any entry
                 const res = await fetch('/api/entries?type=people');
                 const data = await res.json();
                 setPeople(data.people || []);
             } else if (activeTab === 'story') {
-                // Only fetch biography from API if we don't already have one in state
                 if (!biography?.biography && !biographyFetched.current) {
                     const res = await fetch('/api/biography');
                     const data = await res.json();
@@ -132,8 +173,20 @@ export default function LifeView() {
                     }
                     biographyFetched.current = true;
                 }
+                // Load existing gap questions on mount
+                if (!gapsFetched.current) {
+                    try {
+                        const gapsRes = await fetch('/api/questions?category=biography_gap');
+                        const gapsData = await gapsRes.json();
+                        if (gapsData.questions?.length) {
+                            setGaps(gapsData.questions);
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch existing gaps:', err);
+                    }
+                    gapsFetched.current = true;
+                }
             }
-            // Health tab: HealthDashboard handles its own fetching
         } catch (error) {
             console.error('Failed to fetch life data:', error);
         } finally {
@@ -145,6 +198,61 @@ export default function LifeView() {
         fetchData();
     }, [fetchData]);
 
+    // Filtered events for Timeline
+    const filteredEvents = useMemo(() => {
+        return events.filter((event) => {
+            if (filterCategory && event.category !== filterCategory) return false;
+            if (filterPerson && !event.people_involved?.includes(filterPerson)) return false;
+            if (filterEmotion && !event.emotions?.includes(filterEmotion)) return false;
+            return true;
+        });
+    }, [events, filterCategory, filterPerson, filterEmotion]);
+
+    // Scatter chart data
+    const scatterData = useMemo(() => {
+        return filteredEvents.map((event) => ({
+            x: new Date(event.event_date).getTime(),
+            y: event.significance,
+            category: event.category,
+            title: event.title,
+            date: event.event_date,
+        }));
+    }, [filteredEvents]);
+
+    // Stats for events
+    const eventsStats = useMemo(() => {
+        if (filteredEvents.length === 0) return null;
+        const dates = filteredEvents.map((e) => new Date(e.event_date).getTime());
+        const minDate = new Date(Math.min(...dates));
+        const maxDate = new Date(Math.max(...dates));
+        const categoryBreakdown: Record<string, number> = {};
+        filteredEvents.forEach((e) => {
+            categoryBreakdown[e.category] = (categoryBreakdown[e.category] || 0) + 1;
+        });
+        return {
+            total: filteredEvents.length,
+            dateRange: {
+                from: minDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+                to: maxDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+            },
+            categories: categoryBreakdown,
+        };
+    }, [filteredEvents]);
+
+    // Max mentions for people bar
+    const maxMentions = useMemo(() => {
+        if (people.length === 0) return 1;
+        return Math.max(...people.map((p) => p.mention_count), 1);
+    }, [people]);
+
+    const hasActiveFilters = filterCategory || filterPerson || filterEmotion;
+
+    const clearAllFilters = () => {
+        setFilterCategory(null);
+        setFilterPerson(null);
+        setFilterEmotion(null);
+    };
+
     const handleGenerateBiography = async () => {
         setGenerating(true);
         try {
@@ -154,9 +262,7 @@ export default function LifeView() {
                 console.error('Biography error:', data.error);
                 return;
             }
-            // Immediately update state with the generated biography
             setBiography(data);
-            // Allow re-fetch from API next time story tab is visited
             biographyFetched.current = false;
         } catch (error) {
             console.error('Failed to generate biography:', error);
@@ -171,12 +277,10 @@ export default function LifeView() {
             const res = await fetch('/api/analyze-gaps', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                // Refresh to get new questions
                 const gapsRes = await fetch('/api/questions?category=biography_gap');
                 const gapsData = await gapsRes.json();
                 setGaps(gapsData.questions || []);
 
-                // Scroll to gaps section
                 setTimeout(() => {
                     document.querySelector('.gaps-list')?.scrollIntoView({ behavior: 'smooth' });
                 }, 500);
@@ -196,8 +300,8 @@ export default function LifeView() {
 
         try {
             const canvas = await html2canvas(element, {
-                scale: 2, // High resolution
-                backgroundColor: '#16161F', // Dark mode background
+                scale: 2,
+                backgroundColor: '#16161F',
                 useCORS: true,
                 logging: false,
             });
@@ -206,7 +310,7 @@ export default function LifeView() {
             const pdf = new jsPDF({
                 orientation: 'portrait',
                 unit: 'px',
-                format: [canvas.width, canvas.height] // Match canvas size
+                format: [canvas.width, canvas.height],
             });
 
             pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
@@ -217,18 +321,10 @@ export default function LifeView() {
         }
     };
 
-    const getSentimentColor = (avg: number) => {
-        if (avg >= 7) return '#10B981';
-        if (avg >= 4) return '#FBBF24';
-        return '#EF4444';
-    };
-
     const renderBiography = (text: string) => {
-        // Split by ## chapter titles
         const sections = text.split(/^## /gm).filter(Boolean);
 
         if (sections.length <= 1) {
-            // No chapters found, render as single block
             return (
                 <div className="biography-chapter">
                     <div className="chapter-content">
@@ -273,16 +369,34 @@ export default function LifeView() {
             });
             const data = await res.json();
             if (data.success) {
-                // Remove the answered question from the list
-                setGaps(prev => prev.filter(q => q.id !== questionId));
+                setGaps((prev) => prev.filter((q) => q.id !== questionId));
                 setAnsweringGapId(null);
                 setGapAnswer('');
-                // Ideally trigger a story update or at least a toast
                 alert('Response saved! Your story will update in the next cycle.');
             }
         } catch (error) {
             console.error('Failed to save answer:', error);
         }
+    };
+
+    const ScatterTooltipContent = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { title: string; date: string; y: number; category: string } }> }) => {
+        if (!active || !payload?.length) return null;
+        const data = payload[0].payload;
+        return (
+            <div className="scatter-tooltip">
+                <p className="scatter-tooltip-title">{data.title}</p>
+                <p className="scatter-tooltip-date">
+                    {new Date(data.date).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                    })}
+                </p>
+                <p className="scatter-tooltip-sig">
+                    Significance: {data.y}/10
+                </p>
+            </div>
+        );
     };
 
     return (
@@ -331,7 +445,118 @@ export default function LifeView() {
                     </div>
                 ) : (
                     <div className="events-timeline">
-                        {events.map((event) => (
+                        {/* Summary Stats Bar */}
+                        {eventsStats && (
+                            <div className="timeline-stats-bar">
+                                <span className="stats-total">
+                                    {eventsStats.total} event{eventsStats.total !== 1 ? 's' : ''}
+                                </span>
+                                <span className="stats-date-range">
+                                    {eventsStats.dateRange.from} — {eventsStats.dateRange.to}
+                                </span>
+                                <div className="stats-categories">
+                                    {Object.entries(eventsStats.categories).map(([cat, count]) => (
+                                        <span
+                                            key={cat}
+                                            className="stats-category-pill clickable"
+                                            style={{ color: CATEGORY_COLORS[cat] || '#6B7280' }}
+                                            onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
+                                        >
+                                            {cat} ({count})
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Active Filters Bar */}
+                        {hasActiveFilters && (
+                            <div className="timeline-filter-bar">
+                                <span className="filter-bar-label">Filters:</span>
+                                {filterCategory && (
+                                    <span className="filter-tag">
+                                        {filterCategory}
+                                        <button
+                                            className="filter-tag-clear"
+                                            onClick={() => setFilterCategory(null)}
+                                        >
+                                            ✕
+                                        </button>
+                                    </span>
+                                )}
+                                {filterPerson && (
+                                    <span className="filter-tag">
+                                        {filterPerson}
+                                        <button
+                                            className="filter-tag-clear"
+                                            onClick={() => setFilterPerson(null)}
+                                        >
+                                            ✕
+                                        </button>
+                                    </span>
+                                )}
+                                {filterEmotion && (
+                                    <span className="filter-tag">
+                                        {filterEmotion}
+                                        <button
+                                            className="filter-tag-clear"
+                                            onClick={() => setFilterEmotion(null)}
+                                        >
+                                            ✕
+                                        </button>
+                                    </span>
+                                )}
+                                <button className="filter-clear-all" onClick={clearAllFilters}>
+                                    Clear all
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Timeline Scatter Chart */}
+                        {scatterData.length > 0 && (
+                            <div className="timeline-chart">
+                                <ResponsiveContainer width="100%" height={200}>
+                                    <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
+                                        <XAxis
+                                            dataKey="x"
+                                            type="number"
+                                            domain={['dataMin', 'dataMax']}
+                                            tickFormatter={(val: number) =>
+                                                new Date(val).toLocaleDateString('en-IN', {
+                                                    month: 'short',
+                                                    year: '2-digit',
+                                                })
+                                            }
+                                            name="Date"
+                                            stroke="var(--text-tertiary)"
+                                            tick={{ fontSize: 11 }}
+                                        />
+                                        <YAxis
+                                            dataKey="y"
+                                            type="number"
+                                            domain={[0, 10]}
+                                            name="Significance"
+                                            stroke="var(--text-tertiary)"
+                                            tick={{ fontSize: 11 }}
+                                            width={30}
+                                        />
+                                        <ZAxis range={[40, 120]} />
+                                        <Tooltip content={<ScatterTooltipContent />} />
+                                        <Scatter data={scatterData}>
+                                            {scatterData.map((entry, index) => (
+                                                <Cell
+                                                    key={`cell-${index}`}
+                                                    fill={CATEGORY_COLORS[entry.category] || '#6B7280'}
+                                                />
+                                            ))}
+                                        </Scatter>
+                                    </ScatterChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+
+                        {/* Event Cards */}
+                        {filteredEvents.map((event) => (
                             <div key={event.id} className="event-card">
                                 <div
                                     className="event-significance"
@@ -349,7 +574,7 @@ export default function LifeView() {
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 <div className="edit-event-header">
-                                                    <h3 className="text-lg font-semibold text-white">Edit Event</h3>
+                                                    <h3 className="edit-event-heading">Edit Event</h3>
                                                     <button
                                                         onClick={() => setEditingEventId(null)}
                                                         className="edit-event-close"
@@ -364,7 +589,9 @@ export default function LifeView() {
                                                         <input
                                                             type="text"
                                                             value={editForm.title}
-                                                            onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                            onChange={(e) =>
+                                                                setEditForm({ ...editForm, title: e.target.value })
+                                                            }
                                                             className="edit-event-input"
                                                             placeholder="Event Title"
                                                         />
@@ -374,19 +601,36 @@ export default function LifeView() {
                                                         <label className="edit-event-label">Description</label>
                                                         <textarea
                                                             value={editForm.description}
-                                                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                            onChange={(e) =>
+                                                                setEditForm({
+                                                                    ...editForm,
+                                                                    description: e.target.value,
+                                                                })
+                                                            }
                                                             className="edit-event-textarea"
                                                             placeholder="What happened?"
                                                         />
                                                     </div>
 
-                                                    <div className="edit-event-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                                    <div
+                                                        className="edit-event-field"
+                                                        style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '1fr 1fr',
+                                                            gap: '16px',
+                                                        }}
+                                                    >
                                                         <div className="edit-event-field">
                                                             <label className="edit-event-label">Date</label>
                                                             <input
                                                                 type="date"
                                                                 value={editForm.event_date}
-                                                                onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                                                                onChange={(e) =>
+                                                                    setEditForm({
+                                                                        ...editForm,
+                                                                        event_date: e.target.value,
+                                                                    })
+                                                                }
                                                                 className="edit-event-input"
                                                             />
                                                         </div>
@@ -394,26 +638,46 @@ export default function LifeView() {
                                                             <label className="edit-event-label">Category</label>
                                                             <select
                                                                 value={editForm.category}
-                                                                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                                                onChange={(e) =>
+                                                                    setEditForm({
+                                                                        ...editForm,
+                                                                        category: e.target.value,
+                                                                    })
+                                                                }
                                                                 className="edit-event-select"
                                                             >
-                                                                {Object.keys(CATEGORY_COLORS).map(c => (
-                                                                    <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                                                                {Object.keys(CATEGORY_COLORS).map((c) => (
+                                                                    <option key={c} value={c}>
+                                                                        {c.charAt(0).toUpperCase() + c.slice(1)}
+                                                                    </option>
                                                                 ))}
                                                             </select>
                                                         </div>
                                                     </div>
 
                                                     <div className="edit-event-field">
-                                                        <div className="flex justify-between">
-                                                            <label className="edit-event-label">Impact & Significance</label>
-                                                            <span className="edit-event-range-value" style={{ color: 'var(--accent-primary)' }}>{editForm.significance}/10</span>
+                                                        <div className="edit-event-range-header">
+                                                            <label className="edit-event-label">
+                                                                Impact &amp; Significance
+                                                            </label>
+                                                            <span
+                                                                className="edit-event-range-value"
+                                                                style={{ color: 'var(--accent-primary)' }}
+                                                            >
+                                                                {editForm.significance}/10
+                                                            </span>
                                                         </div>
                                                         <input
                                                             type="range"
-                                                            min="1" max="10"
+                                                            min="1"
+                                                            max="10"
                                                             value={editForm.significance}
-                                                            onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
+                                                            onChange={(e) =>
+                                                                setEditForm({
+                                                                    ...editForm,
+                                                                    significance: parseInt(e.target.value),
+                                                                })
+                                                            }
                                                             className="edit-event-range"
                                                         />
                                                         <div className="edit-event-range-labels">
@@ -448,10 +712,16 @@ export default function LifeView() {
                                             month: 'short',
                                             year: 'numeric',
                                         })}
-                                        {/* Show creation time if available, or just a label */}
                                         {(event as any).created_at && (
                                             <span className="event-date-logged">
-                                                (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                                                (Logged:{' '}
+                                                {new Date(
+                                                    (event as any).created_at
+                                                ).toLocaleTimeString('en-IN', {
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                })}
+                                                )
                                             </span>
                                         )}
                                     </div>
@@ -468,22 +738,32 @@ export default function LifeView() {
                                     <p className="event-description">{event.description}</p>
                                     <div className="event-meta">
                                         <span
-                                            className="event-category"
+                                            className="event-category clickable"
                                             style={{
                                                 color: CATEGORY_COLORS[event.category] || '#6B7280',
                                             }}
+                                            onClick={() => setFilterCategory(event.category)}
                                         >
                                             {event.category}
                                         </span>
-                                        <span className="event-sig">
-                                            {'★'.repeat(Math.ceil(event.significance / 2))}
+                                        <span
+                                            className="sig-badge"
+                                            style={{
+                                                background: getSignificanceColor(event.significance),
+                                            }}
+                                        >
+                                            {event.significance}
                                         </span>
                                     </div>
                                     {event.emotions?.length > 0 && (
                                         <div className="event-emotions">
-                                            {event.emotions.map((e, i) => (
-                                                <span key={i} className="emotion-chip">
-                                                    {e}
+                                            {event.emotions.map((em, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="emotion-chip clickable"
+                                                    onClick={() => setFilterEmotion(em)}
+                                                >
+                                                    {em}
                                                 </span>
                                             ))}
                                         </div>
@@ -491,16 +771,18 @@ export default function LifeView() {
                                     {event.people_involved?.length > 0 && (
                                         <div className="event-people">
                                             {event.people_involved.map((p, i) => (
-                                                <span key={i} className="person-chip">
+                                                <span
+                                                    key={i}
+                                                    className="person-chip clickable"
+                                                    onClick={() => setFilterPerson(p)}
+                                                >
                                                     {p}
                                                 </span>
                                             ))}
                                         </div>
                                     )}
-
                                 </div>
                             </div>
-
                         ))}
                     </div>
                 )
@@ -513,54 +795,66 @@ export default function LifeView() {
                     </div>
                 ) : (
                     <div className="people-grid">
-                        {people.map((person) => (
-                            <div key={person.id} className="person-card">
-                                <div className="person-header">
-                                    <div className="person-avatar">
-                                        {person.name.charAt(0).toUpperCase()}
+                        {people.map((person) => {
+                            const sentiment = getSentimentLabel(person.sentiment_avg);
+                            return (
+                                <div key={person.id} className="person-card">
+                                    <div className="person-header">
+                                        <div
+                                            className="person-avatar"
+                                            style={{
+                                                borderColor: getSentimentColor(person.sentiment_avg),
+                                            }}
+                                        >
+                                            {person.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="person-info">
+                                            <h3 className="person-name">{person.name}</h3>
+                                            <span className="person-relationship">
+                                                {person.relationship}
+                                            </span>
+                                            <span
+                                                className="sentiment-label"
+                                                style={{ color: sentiment.color }}
+                                            >
+                                                {sentiment.label}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="person-info">
-                                        <h3 className="person-name">{person.name}</h3>
-                                        <span className="person-relationship">
-                                            {person.relationship}
+                                    <div className="person-stats">
+                                        <span>{person.mention_count} mentions</span>
+                                        <span>
+                                            Last:{' '}
+                                            {new Date(person.last_mentioned).toLocaleDateString(
+                                                'en-IN',
+                                                { day: 'numeric', month: 'short' }
+                                            )}
                                         </span>
                                     </div>
-                                    <div
-                                        className="sentiment-indicator"
-                                        style={{
-                                            backgroundColor: getSentimentColor(
-                                                person.sentiment_avg
-                                            ),
-                                        }}
-                                    >
-                                        {person.sentiment_avg?.toFixed(1)}
+                                    <div className="mention-bar">
+                                        <div
+                                            className="mention-bar-fill"
+                                            style={{
+                                                width: `${Math.min(100, (person.mention_count / maxMentions) * 100)}%`,
+                                                background: getSentimentColor(person.sentiment_avg),
+                                            }}
+                                        />
                                     </div>
+                                    {person.tags?.length > 0 && (
+                                        <div className="person-tags">
+                                            {person.tags.map((tag, i) => (
+                                                <span key={i} className="person-tag">
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="person-stats">
-                                    <span>{person.mention_count} mentions</span>
-                                    <span>
-                                        Last:{' '}
-                                        {new Date(person.last_mentioned).toLocaleDateString(
-                                            'en-IN',
-                                            { day: 'numeric', month: 'short' }
-                                        )}
-                                    </span>
-                                </div>
-                                {person.tags?.length > 0 && (
-                                    <div className="person-tags">
-                                        {person.tags.map((tag, i) => (
-                                            <span key={i} className="person-tag">
-                                                {tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )
             ) : activeTab === 'story' ? (
-                /* Story Tab */
                 <div className="biography-view">
                     {biography?.biography ? (
                         <div className="biography-container">
@@ -568,13 +862,16 @@ export default function LifeView() {
                                 <span className="biography-date">
                                     Generated{' '}
                                     {biography.generated_at
-                                        ? new Date(biography.generated_at).toLocaleDateString('en-IN', {
-                                            day: 'numeric',
-                                            month: 'short',
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                        })
+                                        ? new Date(biography.generated_at).toLocaleDateString(
+                                              'en-IN',
+                                              {
+                                                  day: 'numeric',
+                                                  month: 'short',
+                                                  year: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                              }
+                                          )
                                         : ''}
                                 </span>
                                 <div className="bio-actions">
@@ -595,7 +892,6 @@ export default function LifeView() {
                                 </div>
                             </div>
 
-                            {/* Missing Pieces Button */}
                             <div className="gaps-detective-section">
                                 <button
                                     className="analyze-gaps-btn"
@@ -605,30 +901,34 @@ export default function LifeView() {
                                     {analyzingGaps ? '🕵️ Analyzing...' : '🕵️ Find Missing Pieces'}
                                 </button>
                                 <p className="gaps-detective-desc">
-                                    AI will scan your story for missing chapters and generate questions.
+                                    AI will scan your story for missing chapters and generate
+                                    questions.
                                 </p>
                             </div>
 
-                            {/* Gaps List */}
                             {gaps.length > 0 && (
                                 <div className="gaps-list">
                                     <h3>Missing Pieces ({gaps.length})</h3>
                                     <div className="gaps-grid">
-                                        {gaps.map(gap => (
+                                        {gaps.map((gap) => (
                                             <div key={gap.id} className="gap-card">
                                                 <p className="gap-question">{gap.question_text}</p>
                                                 {answeringGapId === gap.id ? (
                                                     <div className="gap-answer-area">
                                                         <textarea
                                                             value={gapAnswer}
-                                                            onChange={(e) => setGapAnswer(e.target.value)}
+                                                            onChange={(e) =>
+                                                                setGapAnswer(e.target.value)
+                                                            }
                                                             placeholder="Fill in the gap..."
                                                             autoFocus
                                                         />
                                                         <div className="gap-actions">
                                                             <button
                                                                 className="save-btn"
-                                                                onClick={() => handleAnswerGap(gap.id)}
+                                                                onClick={() =>
+                                                                    handleAnswerGap(gap.id)
+                                                                }
                                                             >
                                                                 Save
                                                             </button>

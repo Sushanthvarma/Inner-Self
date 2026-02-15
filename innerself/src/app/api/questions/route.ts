@@ -22,7 +22,7 @@ export async function GET(request: Request) {
                 .select('*')
                 .eq('category', category)
                 .is('answered_at', null)
-                .is('skipped', false)
+                .or('skipped.is.null,skipped.eq.false')
                 .order('created_at', { ascending: false })
                 .limit(20);
 
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
             .from('deepening_questions')
             .select('*')
             .is('answered_at', null)
-            .eq('skipped', false)
+            .or('skipped.is.null,skipped.eq.false')
             .gte('asked_at', yesterday.toISOString())
             .limit(1)
             .maybeSingle();

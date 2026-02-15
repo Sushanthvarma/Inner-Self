@@ -35,11 +35,25 @@ export async function POST(request: NextRequest) {
             if (fileType === 'txt') {
                 extractedText = await file.text();
             } else if (fileType === 'pdf') {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const pdfParse = require('pdf-parse');
                 const buffer = Buffer.from(await file.arrayBuffer());
-                const pdfData = await pdfParse(buffer);
-                extractedText = pdfData.text;
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-require-imports
+                    const pdfParse = require('pdf-parse');
+                    const pdfData = await pdfParse(buffer);
+                    extractedText = pdfData.text || '';
+                    // If PDF is scanned/image-based, text will be empty
+                    if (!extractedText.trim() || extractedText.trim().length < 20) {
+                        // Convert to base64 for vision AI processing
+                        const base64 = buffer.toString('base64');
+                        extractedText = `[IMAGE:application/pdf:${base64}]`;
+                        console.log(`[Upload] PDF "${file.name}" has no extractable text, falling back to vision processing`);
+                    }
+                } catch (pdfError: any) {
+                    console.error('pdf-parse failed, falling back to vision:', pdfError.message);
+                    // Fallback: send as image for vision AI to read
+                    const base64 = buffer.toString('base64');
+                    extractedText = `[IMAGE:application/pdf:${base64}]`;
+                }
             } else if (fileType === 'docx' || fileType === 'doc') {
                 // Robust text extraction from docx using mammoth
                 const buffer = Buffer.from(await file.arrayBuffer());
@@ -68,14 +82,21 @@ export async function POST(request: NextRequest) {
             } else {
                 extractedText = await file.text();
             }
-        } catch (extractError) {
+        } catch (extractError: any) {
             console.error('Text extraction error:', extractError);
-            await supabase.from('uploaded_documents').update({
-                processing_status: 'failed',
-            }).eq('id', docId);
-            return NextResponse.json({
-                error: 'Failed to extract text from file',
-            }, { status: 422 });
+            // Try one more fallback: read as raw text
+            try {
+                extractedText = await file.text();
+                if (!extractedText || extractedText.length < 10) throw new Error('Empty fallback');
+                console.log(`[Upload] Fallback text extraction succeeded for ${file.name}`);
+            } catch {
+                await supabase.from('uploaded_documents').update({
+                    processing_status: 'failed',
+                }).eq('id', docId);
+                return NextResponse.json({
+                    error: `Failed to extract text from ${fileType.toUpperCase()} file: ${extractError.message || 'Unknown error'}. Try uploading as an image (JPG/PNG) instead.`,
+                }, { status: 422 });
+            }
         }
 
         // Update DB with extracted text

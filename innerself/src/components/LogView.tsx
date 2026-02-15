@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { useState, useEffect, useMemo } from 'react';
+import {
+    ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+    BarChart, Bar, LineChart, Line, Cell
+} from 'recharts';
 
 interface ExtractedEntity {
     id: string;
@@ -49,12 +52,24 @@ const CATEGORY_EMOJI: Record<string, string> = {
     memory: '📸', idea: '💡', gratitude: '🙏', vent: '🌊',
 };
 
+const CATEGORY_COLORS: Record<string, string> = {
+    emotion: '#818CF8',
+    task: '#34D399',
+    reflection: '#F59E0B',
+    goal: '#3B82F6',
+    memory: '#EC4899',
+    idea: '#A78BFA',
+    gratitude: '#10B981',
+    vent: '#EF4444',
+};
+
 const SELF_TALK_INDICATOR: Record<string, { emoji: string; color: string }> = {
     critical: { emoji: '🔴', color: '#EF4444' },
     neutral: { emoji: '🟡', color: '#FBBF24' },
     compassionate: { emoji: '🟢', color: '#4ADE80' },
 };
 
+/* ─── Mood Timeline Chart ─── */
 function MoodTrendChart({ entries }: { entries: LogEntry[] }) {
     const data = [...entries].reverse()
         .filter(e => e.extracted_entities?.[0]?.mood_score)
@@ -67,30 +82,189 @@ function MoodTrendChart({ entries }: { entries: LogEntry[] }) {
     if (data.length < 2) return null;
 
     return (
-        <div className="mood-chart" style={{ height: '180px', marginBottom: '24px', background: 'rgba(30, 30, 46, 0.5)', borderRadius: '12px', padding: '16px', border: '1px solid #2A2A35' }}>
-            <h3 style={{ fontSize: '13px', marginBottom: '12px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mood Timeline</h3>
-            <ResponsiveContainer width="100%" height="85%">
-                <AreaChart data={data}>
-                    <defs>
-                        <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#818CF8" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#818CF8" stopOpacity={0} />
-                        </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} opacity={0.5} />
-                    <XAxis dataKey="date" stroke="#6B7280" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis domain={[0, 10]} hide />
-                    <Tooltip
-                        contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#F3F4F6' }}
-                        itemStyle={{ color: '#E5E7EB' }}
-                        labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
-                    />
-                    <Area type="monotone" dataKey="mood" stroke="#818CF8" fillOpacity={1} fill="url(#colorMood)" strokeWidth={2} activeDot={{ r: 4, fill: '#fff' }} />
-                </AreaChart>
-            </ResponsiveContainer>
+        <div className="log-chart-card">
+            <h3 className="log-chart-title">Mood Timeline</h3>
+            <div className="log-chart-body" style={{ height: '150px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data}>
+                        <defs>
+                            <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#818CF8" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#818CF8" stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} opacity={0.5} />
+                        <XAxis dataKey="date" stroke="#6B7280" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} />
+                        <YAxis domain={[0, 10]} hide />
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#F3F4F6' }}
+                            itemStyle={{ color: '#E5E7EB' }}
+                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                        />
+                        <Area type="monotone" dataKey="mood" stroke="#818CF8" fillOpacity={1} fill="url(#colorMood)" strokeWidth={2} activeDot={{ r: 4, fill: '#fff' }} />
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
         </div>
     );
 }
+
+/* ─── Category Distribution Chart (horizontal bar) ─── */
+function CategoryDistributionChart({ entries }: { entries: LogEntry[] }) {
+    const data = useMemo(() => {
+        const counts: Record<string, number> = {};
+        entries.forEach(e => {
+            const cat = e.extracted_entities?.[0]?.category;
+            if (cat) counts[cat] = (counts[cat] || 0) + 1;
+        });
+        return Object.entries(counts)
+            .map(([name, count]) => ({ name, count, fill: CATEGORY_COLORS[name] || '#6B7280' }))
+            .sort((a, b) => b.count - a.count);
+    }, [entries]);
+
+    if (data.length < 1) return null;
+
+    return (
+        <div className="log-chart-card">
+            <h3 className="log-chart-title">Category Distribution</h3>
+            <div className="log-chart-body" style={{ height: `${Math.max(120, data.length * 32)}px` }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data} layout="vertical" margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} opacity={0.5} />
+                        <XAxis type="number" hide />
+                        <YAxis
+                            type="category"
+                            dataKey="name"
+                            stroke="#6B7280"
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                            width={72}
+                            tickFormatter={(v: string) => `${CATEGORY_EMOJI[v] || ''} ${v}`}
+                        />
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#F3F4F6' }}
+                            itemStyle={{ color: '#E5E7EB' }}
+                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                            formatter={(value) => [value, 'Entries']}
+                        />
+                        <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={18}>
+                            {data.map((entry, index) => (
+                                <Cell key={index} fill={entry.fill} fillOpacity={0.8} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+}
+
+/* ─── Energy Trend Chart ─── */
+function EnergyTrendChart({ entries }: { entries: LogEntry[] }) {
+    const data = useMemo(() => {
+        return [...entries].reverse()
+            .filter(e => e.extracted_entities?.[0]?.energy_level != null)
+            .map(e => ({
+                date: new Date(e.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+                energy: e.extracted_entities[0].energy_level,
+                title: e.extracted_entities[0].title
+            }));
+    }, [entries]);
+
+    if (data.length < 2) return null;
+
+    return (
+        <div className="log-chart-card">
+            <h3 className="log-chart-title">Energy Trend</h3>
+            <div className="log-chart-body" style={{ height: '150px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data}>
+                        <defs>
+                            <linearGradient id="colorEnergy" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#34D399" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#34D399" stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} opacity={0.5} />
+                        <XAxis dataKey="date" stroke="#6B7280" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} />
+                        <YAxis domain={[0, 10]} hide />
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#F3F4F6' }}
+                            itemStyle={{ color: '#E5E7EB' }}
+                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                        />
+                        <Line type="monotone" dataKey="energy" stroke="#34D399" strokeWidth={2} dot={{ r: 3, fill: '#34D399' }} activeDot={{ r: 5, fill: '#fff', stroke: '#34D399', strokeWidth: 2 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+}
+
+/* ─── Self-Talk Ratio Bar (div-based) ─── */
+function SelfTalkRatioBar({ entries }: { entries: LogEntry[] }) {
+    const { critical, neutral, compassionate, total } = useMemo(() => {
+        let critical = 0, neutral = 0, compassionate = 0;
+        entries.forEach(e => {
+            const tone = e.extracted_entities?.[0]?.self_talk_tone;
+            if (tone === 'critical') critical++;
+            else if (tone === 'compassionate') compassionate++;
+            else if (tone) neutral++;
+        });
+        return { critical, neutral, compassionate, total: critical + neutral + compassionate };
+    }, [entries]);
+
+    if (total === 0) return null;
+
+    const pctCritical = Math.round((critical / total) * 100);
+    const pctNeutral = Math.round((neutral / total) * 100);
+    const pctCompassionate = 100 - pctCritical - pctNeutral;
+
+    return (
+        <div className="log-chart-card">
+            <h3 className="log-chart-title">Self-Talk Ratio</h3>
+            <div className="self-talk-ratio-bar">
+                {pctCritical > 0 && (
+                    <div
+                        className="self-talk-segment critical"
+                        style={{ width: `${pctCritical}%` }}
+                        title={`Critical: ${critical} (${pctCritical}%)`}
+                    />
+                )}
+                {pctNeutral > 0 && (
+                    <div
+                        className="self-talk-segment neutral"
+                        style={{ width: `${pctNeutral}%` }}
+                        title={`Neutral: ${neutral} (${pctNeutral}%)`}
+                    />
+                )}
+                {pctCompassionate > 0 && (
+                    <div
+                        className="self-talk-segment compassionate"
+                        style={{ width: `${pctCompassionate}%` }}
+                        title={`Compassionate: ${compassionate} (${pctCompassionate}%)`}
+                    />
+                )}
+            </div>
+            <div className="self-talk-legend">
+                <span className="self-talk-legend-item">
+                    <span className="self-talk-dot critical" /> Critical {pctCritical}%
+                </span>
+                <span className="self-talk-legend-item">
+                    <span className="self-talk-dot neutral" /> Neutral {pctNeutral}%
+                </span>
+                <span className="self-talk-legend-item">
+                    <span className="self-talk-dot compassionate" /> Compassionate {pctCompassionate}%
+                </span>
+            </div>
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  MAIN COMPONENT                                            */
+/* ═══════════════════════════════════════════════════════════ */
 
 export default function LogView() {
     const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -101,6 +275,17 @@ export default function LogView() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+
+    // Filter / search state
+    const [activeFilter, setActiveFilter] = useState<'all' | 'reflections' | 'voice' | 'system'>('all');
+    const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showCharts, setShowCharts] = useState(true);
+    const [personFilter, setPersonFilter] = useState<string | null>(null);
+
+    // System log state
+    const [systemLog, setSystemLog] = useState<any[]>([]);
+    const [loadingSystem, setLoadingSystem] = useState(false);
 
     useEffect(() => {
         fetchEntries();
@@ -123,11 +308,10 @@ export default function LogView() {
         }
     };
 
+    /* ── Edit handlers ── */
     const handleEditStart = (entry: LogEntry) => {
         setEditingId(entry.id);
-        // Use raw_text for editing
         setEditContent(entry.raw_text);
-        // Prevent card collapse when clicking edit
     };
 
     const handleCancelEdit = () => {
@@ -150,7 +334,6 @@ export default function LogView() {
             });
 
             if (res.ok) {
-                // Refresh entries to show updates
                 await fetchEntries();
                 setEditingId(null);
                 setEditContent('');
@@ -162,6 +345,7 @@ export default function LogView() {
         }
     };
 
+    /* ── Date formatting ── */
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
         const now = new Date();
@@ -181,10 +365,7 @@ export default function LogView() {
         return new Date(dateStr).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const [activeFilter, setActiveFilter] = useState<'all' | 'reflections' | 'voice' | 'system'>('all');
-    const [systemLog, setSystemLog] = useState<any[]>([]);
-    const [loadingSystem, setLoadingSystem] = useState(false);
-
+    /* ── System log fetch ── */
     useEffect(() => {
         if (activeFilter === 'system' && systemLog.length === 0) {
             setLoadingSystem(true);
@@ -196,15 +377,89 @@ export default function LogView() {
         }
     }, [activeFilter]);
 
-    const filteredEntries = entries.filter(e => {
-        if (activeFilter === 'reflections') return e.extracted_entities?.[0]?.category === 'reflection' || e.raw_text.includes('[Mirror Session]');
-        if (activeFilter === 'voice') return e.source === 'voice';
-        return true;
-    });
+    /* ── Unique categories from entries ── */
+    const uniqueCategories = useMemo(() => {
+        const cats = new Set<string>();
+        entries.forEach(e => {
+            const cat = e.extracted_entities?.[0]?.category;
+            if (cat) cats.add(cat);
+        });
+        return Array.from(cats).sort();
+    }, [entries]);
 
+    /* ── Filtered entries (type filter → category filter → person filter → search) ── */
+    const filteredEntries = useMemo(() => {
+        let result = entries;
+
+        // 1. Type filter
+        if (activeFilter === 'reflections') {
+            result = result.filter(e =>
+                e.extracted_entities?.[0]?.category === 'reflection' || e.raw_text.includes('[Mirror Session]')
+            );
+        } else if (activeFilter === 'voice') {
+            result = result.filter(e => e.source === 'voice');
+        }
+
+        // 2. Category filter
+        if (categoryFilter) {
+            result = result.filter(e => e.extracted_entities?.[0]?.category === categoryFilter);
+        }
+
+        // 3. Person filter
+        if (personFilter) {
+            result = result.filter(e =>
+                e.extracted_entities?.[0]?.people_mentioned?.some(
+                    p => p.name.toLowerCase() === personFilter.toLowerCase()
+                )
+            );
+        }
+
+        // 4. Search
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(e => {
+                const entity = e.extracted_entities?.[0];
+                return (
+                    e.raw_text.toLowerCase().includes(q) ||
+                    (entity?.title?.toLowerCase().includes(q)) ||
+                    (entity?.content?.toLowerCase().includes(q))
+                );
+            });
+        }
+
+        return result;
+    }, [entries, activeFilter, categoryFilter, personFilter, searchQuery]);
+
+    const hasActiveFilters = categoryFilter !== null || personFilter !== null || searchQuery.trim() !== '';
+
+    const clearAllFilters = () => {
+        setCategoryFilter(null);
+        setPersonFilter(null);
+        setSearchQuery('');
+    };
+
+    /* ── Tag click handlers ── */
+    const handleCategoryTagClick = (e: React.MouseEvent, category: string) => {
+        e.stopPropagation();
+        setCategoryFilter(prev => prev === category ? null : category);
+        setPersonFilter(null);
+    };
+
+    const handlePersonTagClick = (e: React.MouseEvent, personName: string) => {
+        e.stopPropagation();
+        setPersonFilter(prev => prev === personName ? null : personName);
+        setCategoryFilter(null);
+    };
+
+    const handleBeliefTagClick = (e: React.MouseEvent, belief: string) => {
+        e.stopPropagation();
+        setSearchQuery(belief);
+        setCategoryFilter(null);
+        setPersonFilter(null);
+    };
+
+    /* ── Mirror conversation parser ── */
     const parseMirrorConversation = (text: string) => {
-        // Simple parser for "[Mirror Session]\nUser: ...\nMirror: ..." format
-        // Or "[Mirror asked: "..."]\n\nMy answer: ..."
         const lines = text.split('\n');
         const conversation: { role: 'user' | 'assistant'; content: string }[] = [];
 
@@ -221,9 +476,7 @@ export default function LogView() {
                 currentRole = 'assistant';
                 currentContent = line.replace(/^(Mirror: |The Mirror speaks: )/, '');
             } else if (line.startsWith('[Mirror Session]') || line.startsWith('[Mirror asked:')) {
-                // Skip header or handle as context (maybe show as system msg?)
-                // For now, treat start of Mirror Session as context for first user msg if needed, 
-                // but usually the next line clarifies.
+                // Skip header lines
             } else {
                 currentContent += '\n' + line;
             }
@@ -233,6 +486,7 @@ export default function LogView() {
         return conversation;
     };
 
+    /* ── Loading state ── */
     if (loading) {
         return (
             <div className="log-loading">
@@ -242,17 +496,25 @@ export default function LogView() {
         );
     }
 
-    // Early return removed to allow access to System Log even if main entries are empty
+    const showChartsSection = showCharts && activeFilter === 'all' && entries.length > 0;
 
     return (
         <div className="log-view">
+            {/* ── Header ── */}
             <div className="log-header">
                 <h2>Your Log</h2>
                 <div className="log-filters">
                     {['all', 'reflections', 'voice', 'system'].map((filter) => (
                         <button
                             key={filter}
-                            onClick={() => setActiveFilter(filter as any)}
+                            onClick={() => {
+                                setActiveFilter(filter as any);
+                                if (filter === 'system') {
+                                    setCategoryFilter(null);
+                                    setPersonFilter(null);
+                                    setSearchQuery('');
+                                }
+                            }}
                             className={`log-filter-btn ${activeFilter === filter ? 'active' : ''}`}
                         >
                             {filter === 'system' ? '🖥️ System Log' : filter.charAt(0).toUpperCase() + filter.slice(1)}
@@ -261,16 +523,99 @@ export default function LogView() {
                 </div>
             </div>
 
-            {activeFilter === 'all' && entries.length > 0 && <MoodTrendChart entries={entries} />}
+            {/* ── Search bar (hidden for system log) ── */}
+            {activeFilter !== 'system' && (
+                <div className="log-search-bar">
+                    <span className="log-search-icon">🔍</span>
+                    <input
+                        type="text"
+                        className="log-search-input"
+                        placeholder="Search entries by title, content..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                        <button className="log-search-clear" onClick={() => setSearchQuery('')}>✕</button>
+                    )}
+                </div>
+            )}
 
-            {(activeFilter !== 'system' && filteredEntries.length === 0) ? (
+            {/* ── Category chips + active filter info ── */}
+            {activeFilter !== 'system' && uniqueCategories.length > 0 && (
+                <div className="log-category-chips">
+                    {uniqueCategories.map(cat => (
+                        <button
+                            key={cat}
+                            className={`log-category-chip ${categoryFilter === cat ? 'active' : ''}`}
+                            onClick={() => {
+                                setCategoryFilter(prev => prev === cat ? null : cat);
+                                setPersonFilter(null);
+                            }}
+                        >
+                            {CATEGORY_EMOJI[cat] || '📌'} {cat}
+                        </button>
+                    ))}
+                    {personFilter && (
+                        <span className="log-active-person-chip">
+                            👤 {personFilter}
+                            <button className="log-chip-remove" onClick={() => setPersonFilter(null)}>✕</button>
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* ── Active filters banner ── */}
+            {activeFilter !== 'system' && hasActiveFilters && (
+                <div className="log-active-filters">
+                    <span className="log-filter-count">
+                        Showing {filteredEntries.length} of {entries.length} entries
+                    </span>
+                    <button className="log-clear-filters" onClick={clearAllFilters}>
+                        Clear filters
+                    </button>
+                </div>
+            )}
+
+            {/* ── Charts toggle + section ── */}
+            {activeFilter === 'all' && entries.length > 0 && (
+                <button
+                    className={`log-charts-toggle ${showCharts ? 'active' : ''}`}
+                    onClick={() => setShowCharts(prev => !prev)}
+                >
+                    📊 {showCharts ? 'Hide Charts' : 'Charts'}
+                </button>
+            )}
+
+            {showChartsSection && (
+                <div className="log-charts-section">
+                    <MoodTrendChart entries={entries} />
+                    <div className="log-charts-grid">
+                        <CategoryDistributionChart entries={entries} />
+                        <EnergyTrendChart entries={entries} />
+                    </div>
+                    <SelfTalkRatioBar entries={entries} />
+                </div>
+            )}
+
+            {/* ── Empty state ── */}
+            {activeFilter !== 'system' && filteredEntries.length === 0 ? (
                 <div className="log-empty">
                     <span className="empty-icon">📖</span>
-                    <h3>Your story begins here</h3>
-                    <p>Start with a brain dump to see your entries appear here.</p>
+                    <h3>{hasActiveFilters ? 'No matching entries' : 'Your story begins here'}</h3>
+                    <p>
+                        {hasActiveFilters
+                            ? 'Try adjusting your filters or search query.'
+                            : 'Start with a brain dump to see your entries appear here.'}
+                    </p>
+                    {hasActiveFilters && (
+                        <button className="log-clear-filters" onClick={clearAllFilters}>
+                            Clear all filters
+                        </button>
+                    )}
                 </div>
             ) : null}
 
+            {/* ── System Log View ── */}
             {activeFilter === 'system' ? (
                 <div className="system-log-container">
                     {loadingSystem ? (
@@ -306,6 +651,7 @@ export default function LogView() {
                     )}
                 </div>
             ) : (
+                /* ── Entries Timeline ── */
                 <div className="log-timeline">
                     {filteredEntries.map((entry) => {
                         const entity = entry.extracted_entities?.[0];
@@ -322,8 +668,7 @@ export default function LogView() {
                                 className={`log-card ${isExpanded ? 'expanded' : ''}`}
                                 style={{ borderLeftColor: moodColor }}
                                 onClick={(e) => {
-                                    // Don't collapse if clicking inside edit area or buttons
-                                    if ((e.target as HTMLElement).closest('.edit-area, .log-card-actions')) return;
+                                    if ((e.target as HTMLElement).closest('.edit-area, .log-card-actions, .tag.clickable')) return;
                                     setExpandedId(isExpanded ? null : entry.id);
                                 }}
                             >
@@ -341,8 +686,8 @@ export default function LogView() {
                                             </span>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span title={`Self-talk: ${entity?.self_talk_tone}`} style={{ fontSize: '10px' }}>
+                                    <div className="log-card-indicators">
+                                        <span title={`Self-talk: ${entity?.self_talk_tone}`} className="self-talk-emoji">
                                             {selfTalk?.emoji}
                                         </span>
                                         <div
@@ -476,13 +821,19 @@ export default function LogView() {
                                             </div>
                                         )}
 
-                                        {/* Beliefs */}
+                                        {/* Beliefs — clickable */}
                                         {entity.beliefs_revealed?.length > 0 && (
                                             <div className="detail-row">
                                                 <span className="detail-label">Beliefs</span>
                                                 <span className="detail-value">
                                                     {entity.beliefs_revealed.map((b, i) => (
-                                                        <span key={i} className="tag belief-tag">{b}</span>
+                                                        <span
+                                                            key={i}
+                                                            className="tag belief-tag clickable"
+                                                            onClick={(e) => handleBeliefTagClick(e, b)}
+                                                        >
+                                                            {b}
+                                                        </span>
                                                     ))}
                                                 </span>
                                             </div>
@@ -512,13 +863,17 @@ export default function LogView() {
                                             </div>
                                         )}
 
-                                        {/* People */}
+                                        {/* People — clickable */}
                                         {entity.people_mentioned?.length > 0 && (
                                             <div className="detail-row">
                                                 <span className="detail-label">People</span>
                                                 <span className="detail-value">
                                                     {entity.people_mentioned.map((p, i) => (
-                                                        <span key={i} className="tag people-tag">
+                                                        <span
+                                                            key={i}
+                                                            className="tag people-tag clickable"
+                                                            onClick={(e) => handlePersonTagClick(e, p.name)}
+                                                        >
                                                             {p.name} ({p.sentiment})
                                                         </span>
                                                     ))}
@@ -550,8 +905,14 @@ export default function LogView() {
                                     </div>
                                 )}
 
+                                {/* Card footer tags — category is clickable */}
                                 <div className="log-card-tags">
-                                    <span className="tag category-tag">{entity?.category}</span>
+                                    <span
+                                        className={`tag category-tag clickable ${categoryFilter === entity?.category ? 'active' : ''}`}
+                                        onClick={(e) => entity?.category && handleCategoryTagClick(e, entity.category)}
+                                    >
+                                        {entity?.category}
+                                    </span>
                                     {entity?.is_task && (
                                         <span className="tag task-tag">{entity.task_status || 'pending'}</span>
                                     )}
