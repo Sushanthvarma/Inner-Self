@@ -20,7 +20,27 @@ interface UploadStatus {
 
 // ---- Simple Sparkline Component (SVG) ----
 const Sparkline = ({ data, color, name }: { data: MetricPoint[], color: string, name: string }) => {
-    if (!data || data.length < 2) return <div className="health-no-data">Not enough data to graph</div>;
+    if (!data || data.length === 0) return null;
+
+    // Single data point — show as a value card instead of "not enough data"
+    if (data.length === 1) {
+        const d = data[0];
+        const statusColor = d.unit === 'normal' || !d.unit ? color : color;
+        return (
+            <div className="health-sparkline-card">
+                <div className="health-sparkline-header">
+                    <h4 className="health-metric-name">{name}</h4>
+                    <div className="health-metric-value" style={{ color: statusColor }}>
+                        {d.value} <span className="health-metric-unit">{d.unit}</span>
+                    </div>
+                </div>
+                <div className="health-single-value">
+                    <span className="health-single-date">{d.date}</span>
+                    <span className="health-single-dot" style={{ background: color }} />
+                </div>
+            </div>
+        );
+    }
 
     const values = data.map(d => d.value);
     const min = Math.min(...values);

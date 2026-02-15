@@ -342,6 +342,7 @@ async function storeLifeEvent(
         category: string;
         emotions: string[];
         people_involved: string[];
+        event_date?: string;
     },
     sourceEntryId: string
 ): Promise<void> {
@@ -359,9 +360,14 @@ async function storeLifeEvent(
         return;
     }
 
+    // Use AI-extracted date, fall back to today only if truly no date provided
+    const eventDate = event.event_date && event.event_date !== 'null'
+        ? event.event_date
+        : new Date().toISOString().split('T')[0];
+
     await supabase.from('life_events_timeline').insert({
         id: uuidv4(),
-        event_date: new Date().toISOString().split('T')[0],
+        event_date: eventDate,
         title: event.title,
         description: event.description,
         significance: event.significance,
@@ -370,7 +376,7 @@ async function storeLifeEvent(
         people_involved: event.people_involved,
         source_entry_ids: [sourceEntryId],
     });
-    console.log(`[LifeEvent] Created: "${event.title}"`);
+    console.log(`[LifeEvent] Created: "${event.title}" on ${eventDate}`);
 }
 
 // ---- Store Insights (with dedup) ----

@@ -133,16 +133,15 @@ export async function POST(request: NextRequest) {
             if (deleteError) console.error('Error cleaning up old events:', deleteError);
 
             const eventRows = parsed.life_events.map(
-                (e: { title: string; description: string; significance: number; category: string; emotions: string[] }) => ({
+                (e: { title: string; description: string; significance: number; category: string; emotions: string[]; event_date?: string }) => ({
                     id: uuidv4(),
-                    event_date: new Date().toISOString().split('T')[0], // Default to today since output doesn't give date yet
+                    event_date: (e.event_date && e.event_date !== 'null') ? e.event_date : new Date().toISOString().split('T')[0],
                     title: e.title,
                     description: e.description,
-                    significance: e.significance || 5, // Access constraints or default
+                    significance: e.significance || 5,
                     category: e.category || 'personal',
                     emotions: e.emotions || [],
-                    source_entry_ids: [docId] // Link back to document! (Schema allows this)
-
+                    source_entry_ids: [docId],
                 })
             );
 

@@ -453,7 +453,8 @@ JSON Output Format:
     "significance": 1-10,
     "category": "career|relationship|health|finance|personal",
     "emotions": ["felt", "felt"],
-    "people_involved": ["names"]
+    "people_involved": ["names"],
+    "event_date": "YYYY-MM-DD or YYYY-01-01 if only year known, or null if truly unknown"
   } | null,
   "health_metrics": [
     {
@@ -470,13 +471,14 @@ JSON Output Format:
 RULES:
 - Be strict. If no life event, return null.
 - If no health metrics, return empty array.
-- Insights should be deep, not obvious summaries.`;
+- Insights should be deep, not obvious summaries.
+- CRITICAL: For event_date, extract the ACTUAL date/year from the text. If user says "in 2015" use "2015-01-01". If "last month" calculate from today. If "when I was 10" and you know birth year, calculate. NEVER default to today unless the event truly happened today.`;
 
 export async function extractBackgroundFeatures(
     rawText: string,
     context: string = ''
 ): Promise<{
-    life_event_detected: { title: string; description: string; significance: number; category: string; emotions: string[]; people_involved: string[] } | null;
+    life_event_detected: { title: string; description: string; significance: number; category: string; emotions: string[]; people_involved: string[]; event_date?: string } | null;
     health_metrics: { metric: string; value: string; unit: string; status: string; date: string }[];
     insights: string[];
 }> {
@@ -812,7 +814,7 @@ Format as:
 {
   "persona_summary": { ... UserPersonaSummary fields ... },
   "people": [{"name": "", "relationship": "", "sentiment_avg": 5, "tags": []}],
-  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": []}],
+  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": [], "event_date": "YYYY-MM-DD or YYYY-01-01 if only year known"}],
   "insights": ["insight text 1", "insight text 2"]
 }
 
@@ -855,11 +857,12 @@ Respond with ONLY JSON:
     "recurring_patterns": []
   },
   "people": [{"name": "", "relationship": "", "sentiment_avg": 1-10, "tags": []}],
-  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": []}],
+  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": [], "event_date": "YYYY-MM-DD (extract ACTUAL date/year from document, use YYYY-01-01 if only year known)"}],
   "health_metrics": [{"metric": "e.g. weight, bp, tsh", "value": "number or string", "unit": "e.g. kg, mmHg", "status": "normal|high|low", "date": "YYYY-MM-DD"}],
   "insights": ["observations from this document"]
 }
 
+CRITICAL: For life_events event_date, extract the REAL date from the document. If a resume says "2015-2018 HSBC", use "2015-01-01". If a report is dated "Jan 2024", use "2024-01-01". NEVER use today's date for historical events.
 Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
 
     if (isImage) {

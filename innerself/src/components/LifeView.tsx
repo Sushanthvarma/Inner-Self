@@ -821,8 +821,7 @@ export default function LifeView() {
                                             </div>
                                             <div className="edit-event-field">
                                                 <label className="edit-event-label">Relationship</label>
-                                                <input
-                                                    type="text"
+                                                <select
                                                     value={editPersonForm.relationship}
                                                     onChange={(e) =>
                                                         setEditPersonForm({
@@ -830,9 +829,33 @@ export default function LifeView() {
                                                             relationship: e.target.value,
                                                         })
                                                     }
-                                                    className="edit-event-input"
-                                                    placeholder="Relationship"
-                                                />
+                                                    className="edit-event-select"
+                                                >
+                                                    <option value="">Select relationship</option>
+                                                    <option value="Wife">Wife</option>
+                                                    <option value="Husband">Husband</option>
+                                                    <option value="Son">Son</option>
+                                                    <option value="Daughter">Daughter</option>
+                                                    <option value="Father">Father</option>
+                                                    <option value="Mother">Mother</option>
+                                                    <option value="Brother">Brother</option>
+                                                    <option value="Sister">Sister</option>
+                                                    <option value="Friend">Friend</option>
+                                                    <option value="School Friend">School Friend</option>
+                                                    <option value="College Friend">College Friend</option>
+                                                    <option value="Colleague">Colleague</option>
+                                                    <option value="Manager">Manager</option>
+                                                    <option value="Former Manager">Former Manager</option>
+                                                    <option value="Client">Client</option>
+                                                    <option value="Mentor">Mentor</option>
+                                                    <option value="Doctor">Doctor</option>
+                                                    <option value="Referring Doctor">Referring Doctor</option>
+                                                    <option value="Therapist">Therapist</option>
+                                                    <option value="Relative">Relative</option>
+                                                    <option value="Neighbor">Neighbor</option>
+                                                    <option value="Acquaintance">Acquaintance</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
                                             </div>
                                             <div className="person-edit-actions">
                                                 <button

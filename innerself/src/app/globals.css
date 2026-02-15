@@ -2902,6 +2902,33 @@ ul, ol {
   -webkit-backdrop-filter: blur(8px);
 }
 
+.health-single-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 0;
+  margin-top: 4px;
+}
+
+.health-single-date {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.health-single-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.health-sparkline-dates {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}
+
 /* ==========================================================
    16. DEEPENING QUESTION CARD
    ========================================================== */
