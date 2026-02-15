@@ -863,12 +863,36 @@ Respond with ONLY JSON:
 Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
 
     if (isImage) {
-        // Parse image data
-        const match = text.match(/\[IMAGE:(.*?):(.*?)\]/);
-        if (!match) throw new Error('Invalid image data');
-        const [, mediaType, base64] = match;
+        // Parse image/document data — handle both complete and truncated base64
+        // Format: [IMAGE:mediaType:base64data] or [IMAGE:mediaType:base64data (truncated, no closing bracket)
+        const match = text.match(/\[IMAGE:([^:]+):([^\]]+)\]?/);
+        if (!match) throw new Error('Invalid image data format');
+        const [, mediaType, base64Raw] = match;
+        // Clean any trailing whitespace or incomplete padding from truncation
+        const base64 = base64Raw.replace(/\s+/g, '').replace(/[^A-Za-z0-9+/=]/g, '');
 
         const anthropic = getAnthropic();
+        const isPDF = mediaType === 'application/pdf';
+
+        // Build the content block based on file type
+        const contentBlock: any = isPDF
+            ? {
+                type: 'document',
+                source: {
+                    type: 'base64',
+                    media_type: 'application/pdf' as const,
+                    data: base64,
+                },
+            }
+            : {
+                type: 'image',
+                source: {
+                    type: 'base64',
+                    media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                    data: base64,
+                },
+            };
+
         const response = await anthropic.messages.create({
             model: MODEL,
             max_tokens: MAX_TOKENS,
@@ -877,17 +901,10 @@ Only include fields where you found relevant information. Use empty arrays for f
                 {
                     role: 'user',
                     content: [
-                        {
-                            type: 'image',
-                            source: {
-                                type: 'base64',
-                                media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                                data: base64,
-                            },
-                        },
+                        contentBlock,
                         {
                             type: 'text',
-                            text: `File name: ${fileName}\n\nAnalyze this image and extract any personally relevant information.`,
+                            text: `File name: ${fileName}\n\nAnalyze this ${isPDF ? 'PDF document' : 'image'} and extract any personally relevant information including health metrics, lab values, and medical data.`,
                         },
                     ],
                 },

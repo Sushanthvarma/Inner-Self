@@ -100,8 +100,11 @@ export async function POST(request: NextRequest) {
         }
 
         // Update DB with extracted text
+        // For binary data (images/PDFs as base64), allow up to 10MB; for text, 50K chars
+        const isBinaryData = extractedText.startsWith('[IMAGE:');
+        const maxLen = isBinaryData ? 10_000_000 : 50_000;
         await supabase.from('uploaded_documents').update({
-            extracted_text: extractedText.substring(0, 50000), // Limit increased for images
+            extracted_text: extractedText.substring(0, maxLen),
             processing_status: 'pending', // Ready for step 2
         }).eq('id', docId);
 

@@ -165,6 +165,23 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: true });
         }
 
+        // People Map: Edit person
+        if (body.personId) {
+            const { personId, name, relationship, tags } = body;
+            const updates: Record<string, unknown> = {};
+            if (name !== undefined) updates.name = name;
+            if (relationship !== undefined) updates.relationship = relationship;
+            if (tags !== undefined) updates.tags = tags;
+
+            const { error: personErr } = await supabase
+                .from('people_map')
+                .update(updates)
+                .eq('id', personId);
+
+            if (personErr) throw personErr;
+            return NextResponse.json({ success: true });
+        }
+
         if (body.eventId) {
             // Update Life Event
             const { eventId, title, description, significance, event_date, category } = body;
@@ -226,17 +243,30 @@ export async function PATCH(request: NextRequest) {
     }
 }
 
-// DELETE: Soft-delete a raw entry
+// DELETE: Soft-delete a raw entry or hard-delete a person
 export async function DELETE(request: NextRequest) {
     try {
-        const { id } = await request.json();
+        const body = await request.json();
         const supabase = getServiceSupabase();
 
+        // Delete person from people_map
+        if (body.personId) {
+            const { error } = await supabase
+                .from('people_map')
+                .delete()
+                .eq('id', body.personId);
+
+            if (error) throw error;
+            console.log('[Entries] Deleted person:', body.personId);
+            return NextResponse.json({ success: true });
+        }
+
+        // Soft-delete raw entry
+        const { id } = body;
         if (!id) {
             return NextResponse.json({ error: 'No id provided' }, { status: 400 });
         }
 
-        // Soft-delete: set deleted_at
         const { error } = await supabase
             .from('raw_entries')
             .update({ deleted_at: new Date().toISOString() })
