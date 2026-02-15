@@ -69,6 +69,51 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ people: data || [] });
         }
 
+        if (type === 'system_activity') {
+            // Fetch raw inputs (Voice/Text)
+            const { data: inputs, error: inputsError } = await supabase
+                .from('raw_entries')
+                .select('id, created_at, raw_text, source')
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (inputsError) throw inputsError;
+
+            // Fetch chat conversations (User + AI)
+            const { data: chats, error: chatsError } = await supabase
+                .from('conversations')
+                .select('id, created_at, role, content, persona_used')
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (chatsError) throw chatsError;
+
+            // Normalize and merge
+            const timeline = [
+                ...(inputs || []).map(i => ({
+                    id: i.id,
+                    type: 'input',
+                    allow_html: false,
+                    content: i.raw_text,
+                    source: i.source, // 'text' | 'voice'
+                    created_at: i.created_at,
+                    role: 'user'
+                })),
+                ...(chats || []).map(c => ({
+                    id: c.id,
+                    type: 'chat',
+                    allow_html: false,
+                    content: c.content,
+                    source: 'chat',
+                    created_at: c.created_at,
+                    role: c.role, // 'user' | 'assistant'
+                    persona: c.persona_used
+                }))
+            ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            return NextResponse.json({ activity: timeline });
+        }
+
         // Fetch all entries with extracted entities
         // Includes extended psychological fields for the new LogView
         const { data, error } = await supabase
