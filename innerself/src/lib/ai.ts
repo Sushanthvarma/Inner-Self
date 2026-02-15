@@ -437,13 +437,16 @@ export async function extractFromEntry(
     return JSON.parse(text) as ExtractionResult;
 }
 
-// ---- Background Feature Extraction (Life Events, Health, Insights) ----
-const BACKGROUND_FEATURES_PROMPT = `You are Inner Self's background analyzer. Your job is to extract deeper, structure-heavy data that we didn't want to slow down the real-time chat with.
+// ---- Background Feature Extraction (Life Events, Health, Insights, Dreams, Courage) ----
+const BACKGROUND_FEATURES_PROMPT = `You are Inner Self's background analyzer for Sushanth Varma. Extract deeper, structure-heavy data from brain dump entries.
 
-Analyze the user's entry and extract:
-1. Life Events: Significant occurrences (new job, breakup, moving, milestones).
-2. Health Metrics: Any quantitative health data (weight 70kg, bp 120/80, sleep 6h).
-3. Insights: Psychological patterns or observations.
+Analyze the entry and extract ALL of the following:
+
+1. **Life Events**: Significant occurrences (new job, breakup, moving, milestones, achievements).
+2. **Health Metrics**: Any quantitative health data (weight 70kg, bp 120/80, sleep 6h). NOTE: Health from brain dumps is IGNORED downstream, but still extract for completeness.
+3. **Insights**: Deep psychological patterns or observations (NOT surface summaries).
+4. **Dreams**: If the user describes a SLEEPING dream, nightmare, or recurring dream. NOT aspirational dreams like "my dream is to..." — ONLY actual sleeping dreams.
+5. **Courage Moments**: Moments of bravery — spoke up, set a boundary, took a risk, confronted someone, showed vulnerability, made a hard change. Even small acts: "I finally told him no", "I spoke up in the meeting", "I admitted I was wrong."
 
 JSON Output Format:
 {
@@ -458,21 +461,42 @@ JSON Output Format:
   } | null,
   "health_metrics": [
     {
-      "metric": "name (e.g. weight)",
-      "value": "value (e.g. 70)",
-      "unit": "unit (e.g. kg)",
+      "metric": "name",
+      "value": "value",
+      "unit": "unit",
       "status": "normal|high|low|unknown",
-      "date": "YYYY-MM-DD (or null if today)"
+      "date": "YYYY-MM-DD or null"
     }
   ],
-  "insights": ["observation 1", "observation 2"]
+  "insights": ["deep observation 1", "deep observation 2"],
+  "dream_detected": {
+    "dream_text": "Full description of the dream",
+    "dream_type": "normal|nightmare|recurring|lucid",
+    "symbols": [
+      {"symbol": "e.g. falling", "interpretation": "May represent loss of control or fear of failure"},
+      {"symbol": "e.g. water", "interpretation": "Often represents emotions or the unconscious"}
+    ],
+    "emotions": ["fear", "wonder"],
+    "themes": ["loss", "transformation"],
+    "waking_connections": "Connection to waking life patterns (e.g. 'Dream about falling may relate to recent career uncertainty')",
+    "significance": 1-10
+  } | null,
+  "courage_detected": {
+    "description": "What brave thing they did",
+    "courage_type": "boundary|vulnerability|risk|confrontation|honesty|change",
+    "significance": 1-10,
+    "people_involved": ["names if any"],
+    "outcome": "What happened as a result, if mentioned"
+  } | null
 }
 
 RULES:
-- Be strict. If no life event, return null.
-- If no health metrics, return empty array.
-- Insights should be deep, not obvious summaries.
-- CRITICAL: For event_date, extract the ACTUAL date/year from the text. If user says "in 2015" use "2015-01-01". If "last month" calculate from today. If "when I was 10" and you know birth year, calculate. NEVER default to today unless the event truly happened today.`;
+- Be strict. If no life event, return null. Same for dream and courage — null if not present.
+- If no health metrics, return empty array. If no insights, return empty array.
+- Insights should be DEEP: "You intellectualize after conflict" not "You had a hard day."
+- DREAMS: Only actual sleeping dreams. "I had a weird dream where..." = YES. "My dream is to build a company" = NO.
+- COURAGE: Even small moments count. Don't over-flag — the act must involve some personal risk or discomfort.
+- CRITICAL: For event_date, extract the ACTUAL date/year from the text. NEVER default to today unless the event truly happened today.`;
 
 export async function extractBackgroundFeatures(
     rawText: string,
@@ -481,6 +505,8 @@ export async function extractBackgroundFeatures(
     life_event_detected: { title: string; description: string; significance: number; category: string; emotions: string[]; people_involved: string[]; event_date?: string } | null;
     health_metrics: { metric: string; value: string; unit: string; status: string; date: string }[];
     insights: string[];
+    dream_detected: { dream_text: string; dream_type: string; symbols: { symbol: string; interpretation: string }[]; emotions: string[]; themes: string[]; waking_connections: string; significance: number } | null;
+    courage_detected: { description: string; courage_type: string; significance: number; people_involved: string[]; outcome: string } | null;
 }> {
     const systemPrompt = BACKGROUND_FEATURES_PROMPT;
     const userMessage = `${context ? `CONTEXT:\n${context}\n\n` : ''}ENTRY:\n"${rawText}"`;
@@ -1131,3 +1157,110 @@ Timeline Events: ${JSON.stringify(timeline || [])}`;
     return await callClaudeJSON(systemPrompt, userMessage);
 }
 
+// ---- Temporal Resonance: Anniversary Detection ----
+export async function detectTemporalResonance(
+    todayDate: string,
+    lifeEvents: { title: string; event_date: string; category: string; significance: number; description: string }[]
+): Promise<string> {
+    const systemPrompt = `You are Inner Self's Temporal Resonance engine for Sushanth Varma.
+
+Your job: Given today's date and a list of life events, identify ANNIVERSARIES (+/- 3 days of today's date in previous years).
+
+For each anniversary found, generate a warm, reflective check-in message.
+
+Respond with JSON:
+{
+    "resonances": [
+        {
+            "event_title": "Original event title",
+            "event_date": "YYYY-MM-DD",
+            "years_ago": number,
+            "reflection": "A warm 2-3 sentence reflection. E.g. 'One year ago today, you left HSBC. That took courage. How does it feel looking back now?'",
+            "emotional_weight": "light|medium|heavy"
+        }
+    ]
+}
+
+RULES:
+- Only flag events within +/- 3 days of today's month-day in ANY previous year.
+- Make reflections personal and warm, not clinical.
+- If no anniversaries, return empty array.
+- significance >= 5 events are more worth flagging.`;
+
+    const userMessage = `TODAY: ${todayDate}\n\nLIFE EVENTS:\n${lifeEvents.map(e => `[${e.event_date}] (sig: ${e.significance}) ${e.title}: ${e.description}`).join('\n')}`;
+
+    return await callClaudeJSON(systemPrompt, userMessage);
+}
+
+// ---- Body-Mind Bridge: Correlate physical and emotional patterns ----
+export async function analyzeBodyMindCorrelations(
+    recentEntries: string,
+    personaSummary: string
+): Promise<string> {
+    const systemPrompt = `You are Inner Self's Body-Mind Bridge analyst for Sushanth Varma.
+
+Your job: Analyze recent entries to find CORRELATIONS between physical symptoms (body_signals) and emotional patterns (mood, triggers, stress).
+
+Look for patterns like:
+- "Headaches tend to appear after conflict with Rajesh"
+- "Sleep drops below 6h when mood is below 4/10"
+- "Back pain intensifies during work stress periods"
+- "Appetite loss correlates with relationship anxiety"
+- "Energy crashes follow days of people-pleasing"
+
+Respond with JSON:
+{
+    "correlations": [
+        {
+            "physical": "The physical symptom or body signal",
+            "emotional": "The emotional pattern or trigger",
+            "pattern": "Clear description of the correlation",
+            "confidence": 0.0-1.0,
+            "recommendation": "Actionable suggestion (e.g. 'Track headaches alongside conflict logs')"
+        }
+    ],
+    "body_summary": "1-2 sentence overview of body-mind connection health"
+}
+
+RULES:
+- Only flag correlations with evidence from the data (don't guess).
+- Be specific, not generic. "Stress causes headaches" is too vague — say WHAT stress.
+- If insufficient data, return empty correlations and a summary saying so.`;
+
+    const userMessage = `PERSONA:\n${personaSummary}\n\nRECENT 30 DAYS OF ENTRIES:\n${recentEntries}`;
+
+    return await callClaudeJSON(systemPrompt, userMessage);
+}
+
+// ---- Dream Decoder: Deep symbol analysis for accumulated dreams ----
+export async function decodeDreamPatterns(
+    dreams: { dream_text: string; dream_type: string; symbols: { symbol: string; interpretation: string }[]; emotions: string[]; dream_date: string }[],
+    personaSummary: string
+): Promise<string> {
+    const systemPrompt = `You are Inner Self's Dream Decoder for Sushanth Varma.
+
+Analyze accumulated dreams to find RECURRING themes, symbols, and connections to waking life.
+
+Respond with JSON:
+{
+    "recurring_symbols": [
+        {"symbol": "water", "frequency": 3, "evolving_meaning": "Appeared as flood (fear) then calm lake (acceptance) — emotional processing arc"}
+    ],
+    "recurring_themes": ["loss of control", "searching for something"],
+    "waking_life_connections": [
+        "Dreams about being chased intensified during the week you avoided the conversation with your manager"
+    ],
+    "overall_pattern": "2-3 sentence summary of what the dream life reveals about inner state",
+    "suggestion": "One actionable suggestion based on dream patterns"
+}
+
+RULES:
+- Look for PATTERNS across multiple dreams, not just individual interpretation.
+- Connect to waking life when possible.
+- If only 1-2 dreams, note that more data is needed for pattern detection.`;
+
+    const dreamsText = dreams.map(d => `[${d.dream_date}] (${d.dream_type}) ${d.dream_text}\nEmotions: ${d.emotions.join(', ')}\nSymbols: ${d.symbols.map(s => s.symbol).join(', ')}`).join('\n\n');
+    const userMessage = `PERSONA:\n${personaSummary}\n\nDREAMS:\n${dreamsText}`;
+
+    return await callClaudeJSON(systemPrompt, userMessage);
+}

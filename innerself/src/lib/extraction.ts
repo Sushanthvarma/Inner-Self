@@ -484,6 +484,95 @@ async function storeHealthMetrics(
     console.log(`[Health] Stored ${metrics.length} metrics.`);
 }
 
+// ---- P3: Store Dream ----
+async function storeDream(
+    dream: {
+        dream_text: string;
+        dream_type: string;
+        symbols: { symbol: string; interpretation: string }[];
+        emotions: string[];
+        themes: string[];
+        waking_connections: string;
+        significance: number;
+    },
+    sourceEntryId: string
+): Promise<void> {
+    const supabase = getServiceSupabase();
+
+    // Dedup: check if same dream text already stored
+    const { data: existing } = await supabase
+        .from('dreams')
+        .select('id')
+        .eq('entry_id', sourceEntryId)
+        .limit(1);
+
+    if (existing && existing.length > 0) {
+        console.log(`[Dream] Already stored for entry ${sourceEntryId}, skipping.`);
+        return;
+    }
+
+    const { error } = await supabase.from('dreams').insert({
+        id: uuidv4(),
+        entry_id: sourceEntryId,
+        dream_text: dream.dream_text,
+        dream_type: dream.dream_type || 'normal',
+        symbols: dream.symbols || [],
+        emotions: dream.emotions || [],
+        themes: dream.themes || [],
+        waking_connections: dream.waking_connections || '',
+        significance: dream.significance || 5,
+        dream_date: new Date().toISOString().split('T')[0],
+    });
+
+    if (error) {
+        console.error(`[Dream] Store failed:`, error);
+    } else {
+        console.log(`[Dream] Stored: "${dream.dream_text.substring(0, 50)}..." (${dream.dream_type})`);
+    }
+}
+
+// ---- P3: Store Courage Moment ----
+async function storeCourageMoment(
+    courage: {
+        description: string;
+        courage_type: string;
+        significance: number;
+        people_involved: string[];
+        outcome: string;
+    },
+    sourceEntryId: string
+): Promise<void> {
+    const supabase = getServiceSupabase();
+
+    // Dedup: check if already stored for this entry
+    const { data: existing } = await supabase
+        .from('courage_log')
+        .select('id')
+        .eq('entry_id', sourceEntryId)
+        .limit(1);
+
+    if (existing && existing.length > 0) {
+        console.log(`[Courage] Already stored for entry ${sourceEntryId}, skipping.`);
+        return;
+    }
+
+    const { error } = await supabase.from('courage_log').insert({
+        id: uuidv4(),
+        entry_id: sourceEntryId,
+        description: courage.description,
+        courage_type: courage.courage_type || 'boundary',
+        significance: courage.significance || 5,
+        people_involved: courage.people_involved || [],
+        outcome: courage.outcome || '',
+    });
+
+    if (error) {
+        console.error(`[Courage] Store failed:`, error);
+    } else {
+        console.log(`[Courage] Stored: "${courage.description.substring(0, 50)}..." (${courage.courage_type})`);
+    }
+}
+
 // ---- Background Processing Pipeline ----
 export async function processBackgroundFeatures(
     entryId: string,
@@ -518,6 +607,16 @@ export async function processBackgroundFeatures(
 
         if (features.insights.length > 0) {
             await storeInsights(features.insights, entryId);
+        }
+
+        // P3: Store dream if detected
+        if (features.dream_detected) {
+            await storeDream(features.dream_detected, entryId);
+        }
+
+        // P3: Store courage moment if detected
+        if (features.courage_detected) {
+            await storeCourageMoment(features.courage_detected, entryId);
         }
 
         return { success: true };

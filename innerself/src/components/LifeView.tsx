@@ -77,9 +77,10 @@ const getSentimentColor = (avg: number): string => {
 };
 
 import HealthDashboard from './HealthDashboard';
+import LetterToFuture from './LetterToFuture';
 
 export default function LifeView() {
-    const [activeTab, setActiveTab] = useState<'events' | 'people' | 'story' | 'health'>('events');
+    const [activeTab, setActiveTab] = useState<'events' | 'people' | 'story' | 'health' | 'letters'>('events');
     const [events, setEvents] = useState<LifeEventItem[]>([]);
     const [people, setPeople] = useState<PersonItem[]>([]);
     const [biography, setBiography] = useState<BiographyData | null>(null);
@@ -440,6 +441,12 @@ export default function LifeView() {
                         onClick={() => setActiveTab('health')}
                     >
                         Health
+                    </button>
+                    <button
+                        className={`life-tab ${activeTab === 'letters' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('letters')}
+                    >
+                        Letters
                     </button>
                 </div>
             </div>
@@ -1056,6 +1063,8 @@ export default function LifeView() {
                 </div>
             ) : activeTab === 'health' ? (
                 <HealthDashboard />
+            ) : activeTab === 'letters' ? (
+                <LetterToFuture />
             ) : null}
         </div>
     );
