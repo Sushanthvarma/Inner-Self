@@ -341,137 +341,167 @@ export default function LifeView() {
                                     }}
                                 />
                                 <div className="event-content">
-                                    {editingEventId === event.id ? (
-                                        <div className="edit-event-form flex flex-col gap-3 mt-2 mb-2 p-3 bg-gray-900/50 rounded-lg border border-gray-700 animate-in fade-in zoom-in-95 duration-200">
-                                            <div className="flex flex-col gap-1">
-                                                <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Title</label>
-                                                <input
-                                                    type="text"
-                                                    value={editForm.title}
-                                                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                                    className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                                    placeholder="Event Title"
-                                                />
-                                            </div>
-
-                                            <div className="flex flex-col gap-1">
-                                                <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Description</label>
-                                                <textarea
-                                                    value={editForm.description}
-                                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                                    className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
-                                                    placeholder="What happened?"
-                                                />
-                                            </div>
-
-                                            <div className="grid grid-cols-3 gap-3">
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Date</label>
-                                                    <input
-                                                        type="date"
-                                                        value={editForm.event_date}
-                                                        onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
-                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                        style={{ colorScheme: 'dark' }}
-                                                    />
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Category</label>
-                                                    <select
-                                                        value={editForm.category}
-                                                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    {/* Edit Modal Overlay */}
+                                    {editingEventId === event.id && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                                            <div
+                                                className="bg-[#16161F] w-full max-w-lg rounded-xl border border-gray-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#12121A]">
+                                                    <h3 className="text-lg font-semibold text-white">Edit Event</h3>
+                                                    <button
+                                                        onClick={() => setEditingEventId(null)}
+                                                        className="text-gray-400 hover:text-white transition-colors"
                                                     >
-                                                        {Object.keys(CATEGORY_COLORS).map(c => (
-                                                            <option key={c} value={c} className="bg-gray-800">{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                                                        ))}
-                                                    </select>
+                                                        ✕
+                                                    </button>
                                                 </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Impact (1-10)</label>
-                                                    <input
-                                                        type="number"
-                                                        min="1" max="10"
-                                                        value={editForm.significance}
-                                                        onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
-                                                        className="w-full bg-gray-800 text-white border border-gray-600 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    />
-                                                </div>
-                                            </div>
 
-                                            <div className="flex justify-end gap-3 mt-2 pt-2 border-t border-gray-700">
-                                                <button
-                                                    onClick={() => setEditingEventId(null)}
-                                                    className="px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    onClick={() => handleSaveEvent(event.id)}
-                                                    className="px-4 py-2 rounded-md text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all flex items-center gap-2"
-                                                >
-                                                    <span>Save Changes</span>
-                                                </button>
+                                                <div className="p-6 flex flex-col gap-4">
+                                                    <div className="flex flex-col gap-2">
+                                                        <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Title</label>
+                                                        <input
+                                                            type="text"
+                                                            value={editForm.title}
+                                                            onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                            className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all placeholder-gray-600"
+                                                            placeholder="Event Title"
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-2">
+                                                        <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Description</label>
+                                                        <textarea
+                                                            value={editForm.description}
+                                                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                            className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all resize-none placeholder-gray-600 leading-relaxed"
+                                                            placeholder="What happened?"
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="flex flex-col gap-2">
+                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Date</label>
+                                                            <input
+                                                                type="date"
+                                                                value={editForm.event_date}
+                                                                onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                                                                className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all"
+                                                                style={{ colorScheme: 'dark' }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex flex-col gap-2">
+                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Category</label>
+                                                            <div className="relative">
+                                                                <select
+                                                                    value={editForm.category}
+                                                                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                                                    className="w-full bg-[#0A0A0F] text-white border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-gray-700 transition-all appearance-none"
+                                                                >
+                                                                    {Object.keys(CATEGORY_COLORS).map(c => (
+                                                                        <option key={c} value={c} className="bg-[#0A0A0F]">{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                                                                    ))}
+                                                                </select>
+                                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex justify-between">
+                                                            <label className="text-xs text-gray-400 uppercase tracking-wider font-medium">Impact & Significance</label>
+                                                            <span className="text-xs text-indigo-400 font-bold">{editForm.significance}/10</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min="1" max="10"
+                                                            value={editForm.significance}
+                                                            onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
+                                                            className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                                        />
+                                                        <div className="flex justify-between text-[10px] text-gray-600 uppercase font-bold tracking-widest">
+                                                            <span>Minor</span>
+                                                            <span>Major</span>
+                                                            <span>Life Changing</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="px-6 py-4 border-t border-gray-800 bg-[#12121A] flex justify-end gap-3">
+                                                    <button
+                                                        onClick={() => setEditingEventId(null)}
+                                                        className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleSaveEvent(event.id)}
+                                                        className="px-5 py-2.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all transform active:scale-95"
+                                                    >
+                                                        Save Changes
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                    ) : (
-                                        <>
-                                            <div className="event-date">
-                                                {new Date(event.event_date).toLocaleDateString('en-IN', {
-                                                    day: 'numeric',
-                                                    month: 'short',
-                                                    year: 'numeric',
-                                                })}
-                                                {/* Show creation time if available, or just a label */}
-                                                {(event as any).created_at && (
-                                                    <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
-                                                        (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                                    )}
+                                    <>
+                                        <div className="event-date">
+                                            {new Date(event.event_date).toLocaleDateString('en-IN', {
+                                                day: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric',
+                                            })}
+                                            {/* Show creation time if available, or just a label */}
+                                            {(event as any).created_at && (
+                                                <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#6B7280' }}>
+                                                    (Logged: {new Date((event as any).created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <h3 className="event-title">{event.title}</h3>
+                                            <button
+                                                onClick={() => handleEditClick(event)}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                                                title="Edit Event"
+                                            >
+                                                ✏️
+                                            </button>
+                                        </div>
+                                        <p className="event-description">{event.description}</p>
+                                        <div className="event-meta">
+                                            <span
+                                                className="event-category"
+                                                style={{
+                                                    color: CATEGORY_COLORS[event.category] || '#6B7280',
+                                                }}
+                                            >
+                                                {event.category}
+                                            </span>
+                                            <span className="event-sig">
+                                                {'★'.repeat(Math.ceil(event.significance / 2))}
+                                            </span>
+                                        </div>
+                                        {event.emotions?.length > 0 && (
+                                            <div className="event-emotions">
+                                                {event.emotions.map((e, i) => (
+                                                    <span key={i} className="emotion-chip">
+                                                        {e}
                                                     </span>
-                                                )}
+                                                ))}
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <h3 className="event-title">{event.title}</h3>
-                                                <button
-                                                    onClick={() => handleEditClick(event)}
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 }}
-                                                    title="Edit Event"
-                                                >
-                                                    ✏️
-                                                </button>
+                                        )}
+                                        {event.people_involved?.length > 0 && (
+                                            <div className="event-people">
+                                                {event.people_involved.map((p, i) => (
+                                                    <span key={i} className="person-chip">
+                                                        {p}
+                                                    </span>
+                                                ))}
                                             </div>
-                                            <p className="event-description">{event.description}</p>
-                                            <div className="event-meta">
-                                                <span
-                                                    className="event-category"
-                                                    style={{
-                                                        color: CATEGORY_COLORS[event.category] || '#6B7280',
-                                                    }}
-                                                >
-                                                    {event.category}
-                                                </span>
-                                                <span className="event-sig">
-                                                    {'★'.repeat(Math.ceil(event.significance / 2))}
-                                                </span>
-                                            </div>
-                                            {event.emotions?.length > 0 && (
-                                                <div className="event-emotions">
-                                                    {event.emotions.map((e, i) => (
-                                                        <span key={i} className="emotion-chip">
-                                                            {e}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            {event.people_involved?.length > 0 && (
-                                                <div className="event-people">
-                                                    {event.people_involved.map((p, i) => (
-                                                        <span key={i} className="person-chip">
-                                                            {p}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </>
+                                        )}
+                                    </>
                                     )}
                                 </div>
                             </div>
