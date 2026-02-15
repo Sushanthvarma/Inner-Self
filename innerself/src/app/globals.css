@@ -2817,243 +2817,536 @@ ul, ol {
 }
 
 /* ==========================================================
-   15. HEALTH DASHBOARD
+   15. HEALTH DASHBOARD — Visual Redesign
    ========================================================== */
-.health-dashboard {
-  max-width: 860px;
+
+/* ── Layout ── */
+.hd-dashboard {
+  max-width: 920px;
   margin: 0 auto;
   width: 100%;
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.35s ease;
 }
 
-.health-header {
+.hd-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.health-title {
-  font-size: 20px;
+.hd-title {
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
 }
-.health-upload-btn {
+.hd-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  display: block;
+}
+.hd-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ── */
+.hd-btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: var(--radius-full);
   font-size: 12.5px;
-  font-weight: 500;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
+  font-weight: 600;
+  background: var(--accent);
+  border: none;
+  color: #000;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
-.health-upload-btn:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
+.hd-btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
-.health-status {
+.hd-btn-danger {
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #EF4444;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.hd-btn-danger:hover { background: rgba(239, 68, 68, 0.16); }
+.hd-btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Status bar ── */
+.hd-status {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.health-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  align-items: center;
   gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(16,185,129,0.06);
+  border: 1px solid rgba(16,185,129,0.15);
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.hd-status.error {
+  background: rgba(239,68,68,0.06);
+  border-color: rgba(239,68,68,0.15);
 }
 
-.health-empty {
+/* ── Empty state ── */
+.hd-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 48px 24px;
+  padding: 60px 24px;
   gap: 12px;
 }
-.health-empty-icon {
-  font-size: 40px;
-  opacity: 0.4;
-}
-.health-empty h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.health-empty p {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  max-width: 300px;
-  line-height: 1.6;
+.hd-empty-icon { font-size: 48px; opacity: 0.35; }
+.hd-empty h3 { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0; }
+.hd-empty p { font-size: 13px; color: var(--text-tertiary); max-width: 380px; line-height: 1.7; margin: 0; }
+
+/* ═══════════════════════════════════════════
+   OVERVIEW HERO
+   ═══════════════════════════════════════════ */
+.hd-overview {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+  backdrop-filter: blur(12px);
 }
 
-.health-sparkline-card {
+/* Radial gauge */
+.hd-gauge {
+  position: relative;
+  flex-shrink: 0;
+  width: 130px;
+  height: 130px;
+}
+.hd-gauge-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.hd-gauge-pct {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.hd-gauge-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Overview stats */
+.hd-overview-stats {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.hd-overview-row {
+  display: flex;
+  gap: 10px;
+}
+.hd-ov-card {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hd-ov-num {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.hd-ov-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.hd-ov-normal {
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2);
+}
+.hd-ov-normal .hd-ov-num { color: #10B981; }
+.hd-ov-normal .hd-ov-label { color: rgba(16,185,129,0.7); }
+
+.hd-ov-flagged {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.hd-ov-flagged .hd-ov-num { color: #EF4444; }
+.hd-ov-flagged .hd-ov-label { color: rgba(239,68,68,0.7); }
+
+.hd-ov-total {
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(99,102,241,0.2);
+}
+.hd-ov-total .hd-ov-num { color: #6366F1; }
+.hd-ov-total .hd-ov-label { color: rgba(99,102,241,0.7); }
+
+/* System chips in overview */
+.hd-system-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hd-sys-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  font-weight: 500;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+.hd-sys-chip.ok { border-color: rgba(16,185,129,0.3); }
+.hd-sys-chip.warn { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.04); }
+.hd-sys-chip-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+/* ═══════════════════════════════════════════
+   SYSTEM PANELS (grouped by body system)
+   ═══════════════════════════════════════════ */
+.hd-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hd-system-panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.hd-system-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+.hd-system-header:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.hd-system-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hd-system-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.hd-system-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 3px;
+}
+.hd-system-stats {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+}
+.hd-stat-ok { color: #10B981; font-weight: 600; }
+.hd-stat-warn { color: #EF4444; font-weight: 600; }
+.hd-stat-total { color: var(--text-tertiary); }
+
+.hd-system-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Mini health bar in panel header */
+.hd-mini-health-bar {
+  width: 60px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.hd-mini-health-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+/* Chevron */
+.hd-chevron {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  transition: transform 0.25s ease;
+}
+.hd-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Metric grid inside panel */
+.hd-system-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 4px 16px 16px;
+}
+
+/* ═══════════════════════════════════════════
+   INDIVIDUAL METRIC CARD
+   ═══════════════════════════════════════════ */
+.hd-metric-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 14px;
-  backdrop-filter: blur(8px);
+  padding: 14px 16px;
   position: relative;
-  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.hd-metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  border-radius: 3px 0 0 3px;
+  transition: background 0.2s ease;
+}
+.hd-metric-card:hover {
+  border-color: rgba(255,255,255,0.12);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
-.health-sparkline-header {
+/* Status-based left border */
+.hd-status-normal::before { background: #10B981; }
+.hd-status-high::before { background: #EF4444; }
+.hd-status-low::before { background: #F59E0B; }
+.hd-status-critical::before { background: #DC2626; }
+
+.hd-metric-top {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 8px;
 }
-
-.health-metric-name {
-  font-size: 13px;
+.hd-metric-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.hd-metric-name {
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  line-height: 1.3;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.health-metric-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.health-metric-unit {
-  font-size: 12px;
-  font-weight: 400;
+.hd-metric-date {
+  font-size: 10.5px;
   color: var(--text-tertiary);
 }
 
-.health-single-value {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0 0;
-  margin-top: 4px;
-}
-
-.health-single-date {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.health-single-dot {
-  width: 10px;
-  height: 10px;
+/* Delete X */
+.hd-metric-x {
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-}
-
-.health-sparkline-dates {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-tertiary);
-  margin-top: 6px;
-}
-
-/* Health header actions */
-.health-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.health-clear-btn {
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
-  font-weight: 500;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #EF4444;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.health-clear-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-}
-.health-clear-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Delete button on metric cards */
-.health-metric-delete-btn {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  background: rgba(239, 68, 68, 0.08);
-  color: #EF4444;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-.health-metric-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #EF4444;
-}
-
-/* Status badge on metrics */
-.health-status-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-/* Metric data point chips */
-.health-metric-points {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
-}
-.health-point-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: 10px;
-  color: var(--text-tertiary);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-}
-.health-point-delete {
-  width: 14px;
-  height: 14px;
   border: none;
   background: transparent;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  flex-shrink: 0;
   transition: all 0.15s ease;
+  opacity: 0;
 }
-.health-point-delete:hover {
+.hd-metric-card:hover .hd-metric-x { opacity: 1; }
+.hd-metric-x:hover {
   color: #EF4444;
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239,68,68,0.12);
+}
+
+/* Value row */
+.hd-metric-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.hd-metric-val {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.hd-metric-unit {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.hd-metric-badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════
+   RANGE BAR — shows value position
+   ═══════════════════════════════════════════ */
+.hd-range-bar-wrap {
+  margin-top: 4px;
+}
+.hd-range-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  overflow: visible;
+}
+.hd-range-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+}
+.hd-range-normal {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(16,185,129,0.2);
+  border-radius: 3px;
+}
+.hd-range-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.hd-range-dot {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--bg-card);
+  transition: left 0.5s ease;
+  z-index: 2;
+}
+.hd-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════════════════
+   MINI SPARKLINE (inside metric card)
+   ═══════════════════════════════════════════ */
+.hd-mini-spark {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  padding-top: 8px;
+}
+.hd-mini-spark svg {
+  display: block;
+}
+.hd-mini-spark-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  opacity: 0.5;
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .hd-overview {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+    gap: 16px;
+  }
+  .hd-gauge {
+    align-self: center;
+  }
+  .hd-overview-row {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .hd-ov-num { font-size: 20px; }
+  .hd-system-grid {
+    grid-template-columns: 1fr;
+    padding: 4px 12px 12px;
+  }
+  .hd-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .hd-header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 /* ==========================================================
