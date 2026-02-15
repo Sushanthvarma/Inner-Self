@@ -242,15 +242,7 @@ export default function LogView() {
         );
     }
 
-    if (entries.length === 0) {
-        return (
-            <div className="log-empty">
-                <span className="empty-icon">📖</span>
-                <h3>Your story begins here</h3>
-                <p>Start with a brain dump to see your entries appear here.</p>
-            </div>
-        );
-    }
+    // Early return removed to allow access to System Log even if main entries are empty
 
     return (
         <div className="log-view">
@@ -272,7 +264,15 @@ export default function LogView() {
                 </div>
             </div>
 
-            {activeFilter === 'all' && <MoodTrendChart entries={entries} />}
+            {activeFilter === 'all' && entries.length > 0 && <MoodTrendChart entries={entries} />}
+
+            {(activeFilter !== 'system' && filteredEntries.length === 0) ? (
+                <div className="log-empty">
+                    <span className="empty-icon">📖</span>
+                    <h3>Your story begins here</h3>
+                    <p>Start with a brain dump to see your entries appear here.</p>
+                </div>
+            ) : null}
 
             {activeFilter === 'system' ? (
                 <div className="system-log-container flex flex-col gap-0 border border-gray-800 rounded-lg overflow-hidden bg-[#0d0d10] font-mono text-xs mt-4">
