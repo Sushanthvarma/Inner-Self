@@ -3,13 +3,19 @@
 // Aggregates self-talk tones from the last 24h/30d
 // Triggers alert if critical self-talk > 70%
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+
+    const runId = await startCronRun('self_talk_daily');
+
     try {
         console.log('[Cron] Starting self-talk daily analysis...');
         const supabase = getServiceSupabase();
@@ -31,6 +37,7 @@ export async function GET() {
 
         if (!entries || entries.length === 0) {
             console.log('[Cron] No entries with self-talk tone found in last 30 days.');
+            await completeCronRun(runId, 'completed', { message: 'No data to analyze' });
             return NextResponse.json({ message: 'No data to analyze' });
         }
 
@@ -91,6 +98,12 @@ export async function GET() {
             }
         }
 
+        await completeCronRun(runId, 'completed', {
+            date: today,
+            stats: { positivePct, neutralPct, criticalPct, total },
+            alert: alertTriggered
+        }, undefined, total);
+
         return NextResponse.json({
             success: true,
             date: today,
@@ -100,6 +113,7 @@ export async function GET() {
 
     } catch (error) {
         console.error('[Cron] Self-talk analysis failed:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Internal server error' },
             { status: 500 }

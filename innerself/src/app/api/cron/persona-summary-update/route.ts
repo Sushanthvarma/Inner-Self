@@ -3,16 +3,22 @@
 // Rewrites the "God View" document based on recent entries
 // Runs weekly to keep the AI's understanding fresh
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { updatePersonaSummary } from '@/lib/ai';
 import { getPersonaSummary } from '@/lib/embeddings';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+
+    const runId = await startCronRun('persona_summary_update');
     try {
+
         console.log('[Cron] Starting persona summary update...');
         const supabase = getServiceSupabase();
 
@@ -25,7 +31,7 @@ export async function GET() {
 
         const { data: entries, error } = await supabase
             .from('extracted_entities')
-            .select('title, content, category, mood_score, deep_emotional_analysis, created_at')
+            .select('title, content, category, mood_score, deeper_emotion, created_at')
             .gte('created_at', thirtyDaysAgo.toISOString())
             .order('created_at', { ascending: true });
 
@@ -33,6 +39,7 @@ export async function GET() {
 
         if (!entries || entries.length < 10) {
             console.log('[Cron] Not enough data (<10 entries in 30d) to update persona summary.');
+            await completeCronRun(runId, 'completed', { message: 'Insufficient data' });
             return NextResponse.json({ message: 'Insufficient data' });
         }
 
@@ -72,10 +79,16 @@ export async function GET() {
 
         console.log('[Cron] Persona summary updated successfully.');
 
+        await completeCronRun(runId, 'completed', {
+            updated_at: new Date().toISOString(),
+            entries_processed: entries.length
+        }, undefined, entries.length);
+
         return NextResponse.json({ success: true, updated_at: new Date().toISOString() });
 
     } catch (error) {
         console.error('[Cron] Persona summary update failed:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Internal server error' },
             { status: 500 }

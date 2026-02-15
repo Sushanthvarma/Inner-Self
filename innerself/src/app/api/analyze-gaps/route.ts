@@ -1,16 +1,17 @@
 // ============================================================
 // INNER SELF — Gap Analysis API
 // Finds missing periods in the biography
+// FIXED: Uses Claude (via ai.ts) instead of OpenAI GPT-4o
 // ============================================================
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
-import OpenAI from 'openai';
+import { analyzeGaps } from '@/lib/ai';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Allow 60s for analysis
+export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export async function POST() {
     try {
         const supabase = getServiceSupabase();
 
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
         const { data: persona } = await supabase
             .from('user_persona_summary')
             .select('*')
-            .order('version', { ascending: false })
+            .order('updated_at', { ascending: false })
             .limit(1)
             .maybeSingle();
 
@@ -27,45 +28,9 @@ export async function POST(request: Request) {
             .select('*')
             .order('event_date', { ascending: true });
 
-        // 2. Send to Anthropic/OpenAI for analysis
-        // We use the 'biography' generation prompt logic but focus on GAPS
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }); // Or use Anthropic if preferred
-
-        const prompt = `
-        You are the Biography Detective for Inner Self.
-        Your job is to read the current known life timeline and identify SIGNIFICANT GAPS or VAGUE AREAS.
-
-        CURRENT CONTEXT:
-        Persona: ${JSON.stringify(persona || {})}
-        Timeline Events: ${JSON.stringify(timeline || [])}
-
-        TASK:
-        1. Identify 3-5 major gaps where information is missing (e.g. "What happened between 2012 and 2014?", "How did X relationship end?", "Why did you move to Y?").
-        2. Formulate a direct, compassionate question for each gap.
-        3. Prioritize by chronological order or emotional weight.
-
-        OUTPUT JSON:
-        {
-            "gaps": [
-                {
-                    "question": "string",
-                    "context": "string (why this is missing)",
-                    "category": "career | relationship | personal | health"
-                }
-            ]
-        }
-        `;
-
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o", // Strong model for reasoning
-            messages: [
-                { role: "system", content: "You are a psychological biographer." },
-                { role: "user", content: prompt }
-            ],
-            response_format: { type: "json_object" }
-        });
-
-        const result = JSON.parse(completion.choices[0].message.content || '{}');
+        // 2. Send to Claude for analysis (replaces OpenAI GPT-4o)
+        const resultStr = await analyzeGaps(persona, timeline || []);
+        const result = JSON.parse(resultStr);
         const gaps = result.gaps || [];
 
         // 3. Save gaps as recommended questions
@@ -83,7 +48,7 @@ export async function POST(request: Request) {
                 const newQ = {
                     id: uuidv4(),
                     question_text: gap.question,
-                    category: 'biography_gap', // Special category
+                    category: 'biography_gap',
                     week_range: 'dynamic_gap',
                     created_at: new Date().toISOString()
                 };

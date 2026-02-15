@@ -2,15 +2,21 @@
 // INNER SELF — Daily Insights Cron
 // Analyzes last 24h of entries to find patterns/warnings/celebrations
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { generateDailyInsights } from '@/lib/ai';
 import { getPersonaSummary } from '@/lib/embeddings';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+    
+    const runId = await startCronRun('daily_insights');
+    
     try {
         console.log('[Cron] Starting daily insights generation...');
         const supabase = getServiceSupabase();
@@ -29,6 +35,7 @@ export async function GET() {
 
         if (!entries || entries.length === 0) {
             console.log('[Cron] No entries in last 24h. Skipping insights.');
+            await completeCronRun(runId, 'completed', { message: 'No entries to analyze' });
             return NextResponse.json({ message: 'No entries to analyze' });
         }
 
@@ -45,6 +52,7 @@ export async function GET() {
 
         if (!result.insights || result.insights.length === 0) {
             console.log('[Cron] AI found no significant insights.');
+            await completeCronRun(runId, 'completed', { message: 'No insights generated', entries_analyzed: entries.length });
             return NextResponse.json({ message: 'No insights generated', count: 0 });
         }
 
@@ -73,6 +81,11 @@ export async function GET() {
 
         console.log(`[Cron] Generated and stored ${storedCount} insights.`);
 
+        await completeCronRun(runId, 'completed', {
+            analyzed_entries: entries.length,
+            generated_insights: result.insights.length,
+            stored_insights: storedCount
+        }, undefined, entries.length);
         return NextResponse.json({
             success: true,
             analyzed_entries: entries.length,
@@ -82,6 +95,7 @@ export async function GET() {
 
     } catch (error) {
         console.error('[Cron] Daily insights failed:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Internal server error' },
             { status: 500 }

@@ -79,16 +79,8 @@ export default function MirrorView() {
                 ]);
             }
 
-            // Save to DB (only the first answer usually, or all?)
-            // We'll save all user inputs as they are insights
-            fetch('/api/process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: `[Mirror Session]\nUser: ${textToSend}\nMirror: ${data.response}`,
-                    source: 'text',
-                }),
-            }).catch(err => console.error('Mirror entry save failed:', err));
+            // FIXED: Mirror sessions are saved via /api/chat (conversations table).
+            // Do NOT call /api/process — that creates ghost raw_entries in Log tab.
 
         } catch (error) {
             console.error('Mirror processing error:', error);

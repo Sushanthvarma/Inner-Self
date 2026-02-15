@@ -101,6 +101,43 @@ export async function processEntry(
             if (insertError) throw new Error(`Raw entry save failed: ${insertError.message}`);
         }
 
+        // P2 FIX: Skip Claude for very short inputs (<10 chars) — return minimal defaults
+        if (rawText.trim().length < 10) {
+            console.log(`[Pipeline] Input too short (${rawText.trim().length} chars). Returning minimal defaults.`);
+            const minimalExtraction = {
+                category: 'reflection',
+                title: rawText.trim().substring(0, 30) || 'Brief note',
+                content: rawText.trim(),
+                mood_score: 5,
+                surface_emotion: 'neutral',
+                deeper_emotion: '',
+                core_need: '',
+                triggers: [],
+                self_talk_tone: 'neutral',
+                energy_level: 5,
+                identity_persona: 'Seeker',
+                body_signals: [],
+                is_task: false,
+                task_status: null,
+                task_due_date: null,
+                people_mentioned: [],
+                beliefs_revealed: [],
+                ai_response: 'Noted.',
+                ai_persona_used: 'friend',
+                follow_up_question: '',
+            } as unknown as ExtractionResult;
+
+            // Still save the extracted entity
+            await supabase.from('extracted_entities').insert({
+                id: uuidv4(),
+                entry_id: entryId,
+                ...minimalExtraction,
+                created_at: new Date().toISOString(),
+            });
+
+            return { entryId, extraction: minimalExtraction, success: true };
+        }
+
         // Step 2: Get context for Claude
         console.log('[Pipeline] Step 2: Fetching context...');
         let recentContext = '';
@@ -108,7 +145,7 @@ export async function processEntry(
         try {
             let similarContext = '';
             [recentContext, personaSummary, similarContext] = await Promise.all([
-                getRecentEntries(5), // Reduced recent count to make room for similar
+                getRecentEntries(5),
                 getPersonaSummary(),
                 findSimilarEntries(rawText, 5)
             ]);

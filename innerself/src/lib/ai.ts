@@ -1100,3 +1100,34 @@ Please analyze these results, compare across dates where possible, identify conc
     return await callClaudeJSON(systemPrompt, userMessage);
 }
 
+// ---- Analyze Biography Gaps (replaces OpenAI GPT-4o) ----
+export async function analyzeGaps(
+    persona: Record<string, unknown> | null,
+    timeline: Record<string, unknown>[]
+): Promise<string> {
+    const systemPrompt = `You are the Biography Detective for Inner Self.
+Your job is to read the current known life timeline and identify SIGNIFICANT GAPS or VAGUE AREAS.
+
+TASK:
+1. Identify 3-5 major gaps where information is missing (e.g. "What happened between 2012 and 2014?", "How did X relationship end?", "Why did you move to Y?").
+2. Formulate a direct, compassionate question for each gap.
+3. Prioritize by chronological order or emotional weight.
+
+Respond with ONLY JSON:
+{
+    "gaps": [
+        {
+            "question": "string",
+            "context": "string (why this is missing)",
+            "category": "career | relationship | personal | health"
+        }
+    ]
+}`;
+
+    const userMessage = `CURRENT CONTEXT:
+Persona: ${JSON.stringify(persona || {})}
+Timeline Events: ${JSON.stringify(timeline || [])}`;
+
+    return await callClaudeJSON(systemPrompt, userMessage);
+}
+

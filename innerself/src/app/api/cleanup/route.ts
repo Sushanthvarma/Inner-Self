@@ -4,28 +4,35 @@
 // This route can be called periodically (e.g., via Vercel Cron)
 // to automatically clean up duplicates across all tables.
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+    const runId = await startCronRun('cleanup');
+
     try {
         const supabase = getServiceSupabase();
         const results: Record<string, number> = {};
 
-        // 1. Dedup life events by title (case-insensitive, keep newest)
+        // 1. Dedup life events by title + source (FIXED: include source_entry_ids to avoid deleting different entries with same title)
         const { data: events } = await supabase
             .from('life_events_timeline')
-            .select('id, title, created_at')
+            .select('id, title, source_entry_ids, created_at')
             .order('created_at', { ascending: false });
 
         if (events && events.length > 0) {
             const seen = new Map<string, string>();
             const dupeIds: string[] = [];
             for (const e of events) {
-                const key = (e.title || '').toLowerCase().trim();
+                // Include source_entry_ids in key so different sources aren't considered duplicates
+                const sourceKey = JSON.stringify(e.source_entry_ids || []);
+                const key = (e.title || '').toLowerCase().trim() + '|' + sourceKey;
                 if (seen.has(key)) {
                     dupeIds.push(e.id);
                 } else {
@@ -155,6 +162,7 @@ export async function GET() {
         const totalRemoved = Object.values(results).reduce((a, b) => a + b, 0);
         console.log(`[Cleanup] Removed ${totalRemoved} duplicates:`, results);
 
+        await completeCronRun(runId, 'completed', results, undefined, totalRemoved);
         return NextResponse.json({
             success: true,
             removed: results,
@@ -163,6 +171,7 @@ export async function GET() {
         });
     } catch (error) {
         console.error('Cleanup error:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Cleanup failed' },
             { status: 500 }

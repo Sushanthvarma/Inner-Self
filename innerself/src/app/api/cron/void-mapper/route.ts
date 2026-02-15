@@ -2,15 +2,21 @@
 // INNER SELF — Void Mapper Cron (Topic Decay)
 // Detects active goals or patterns that haven't been mentioned in 14 days
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { detectVoidTopics } from '@/lib/ai';
 import { getPersonaSummary } from '@/lib/embeddings';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+    
+    const runId = await startCronRun('void_mapper');
+    
     try {
         console.log('[Cron] Starting Void Mapper (Topic Decay detection)...');
         const supabase = getServiceSupabase();
@@ -29,6 +35,7 @@ export async function GET() {
 
         if (activeGoals.length === 0 && recurringPatterns.length === 0) {
             console.log('[Cron] No active goals or patterns to check.');
+            await completeCronRun(runId, 'completed', { message: 'No targets to check' });
             return NextResponse.json({ message: 'No targets to check' });
         }
 
@@ -45,6 +52,7 @@ export async function GET() {
 
         if (!entries || entries.length === 0) {
             console.log('[Cron] No entries in last 14 days. Void detection skipped (all is void).');
+            await completeCronRun(runId, 'completed', { message: 'No recent activity' });
             return NextResponse.json({ message: 'No recent activity' });
         }
 
@@ -56,6 +64,7 @@ export async function GET() {
 
         if (!result.decaying_topics || result.decaying_topics.length === 0) {
             console.log('[Cron] No void topics detected.');
+            await completeCronRun(runId, 'completed', { void_count: 0, entries_checked: entries.length });
             return NextResponse.json({ success: true, void_count: 0 });
         }
 
@@ -84,6 +93,11 @@ export async function GET() {
 
         console.log(`[Cron] Void Mapper finished. flagged ${createdCount} decaying topics.`);
 
+        await completeCronRun(runId, 'completed', {
+            void_topics: result.decaying_topics.length,
+            insights_created: createdCount,
+            entries_checked: entries.length
+        }, undefined, entries.length);
         return NextResponse.json({
             success: true,
             void_topics: result.decaying_topics.length,
@@ -92,6 +106,7 @@ export async function GET() {
 
     } catch (error) {
         console.error('[Cron] Void Mapper failed:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Internal server error' },
             { status: 500 }

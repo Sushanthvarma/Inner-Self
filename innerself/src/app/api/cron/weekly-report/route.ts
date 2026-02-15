@@ -2,15 +2,21 @@
 // INNER SELF — Weekly Report Cron
 // Generates weekly summary (Sun-Sat) and stores it
 // ============================================================
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { generateWeeklyReport, generateBiography } from '@/lib/ai';
 import { getPersonaSummary } from '@/lib/embeddings';
+import { verifyCronAuth, startCronRun, completeCronRun } from '@/lib/cron-helpers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = verifyCronAuth(request);
+    if (authError) return authError;
+    
+    const runId = await startCronRun('weekly_report');
+    
     try {
         console.log('[Cron] Starting weekly report generation...');
         const supabase = getServiceSupabase();
@@ -37,6 +43,7 @@ export async function GET() {
 
         if (existing && existing.length > 0) {
             console.log(`[Cron] Report for ${startDateStr} already exists. Skipping.`);
+            await completeCronRun(runId, 'completed', { message: 'Report already exists' });
             return NextResponse.json({ message: 'Report already exists' });
         }
 
@@ -52,6 +59,7 @@ export async function GET() {
 
         if (!entries || entries.length < 5) {
             console.log('[Cron] Not enough entries (<5) to generate meaningful report.');
+            await completeCronRun(runId, 'completed', { message: 'Insufficient data', entries_count: entries?.length || 0 });
             return NextResponse.json({ message: 'Insufficient data' });
         }
 
@@ -148,10 +156,12 @@ export async function GET() {
             // Don't fail the whole request
         }
 
+        await completeCronRun(runId, 'completed', { report_id: inserted.id, entries_analyzed: entries.length });
         return NextResponse.json({ success: true, report_id: inserted.id });
 
     } catch (error) {
         console.error('[Cron] Weekly report generation failed:', error);
+        await completeCronRun(runId, 'failed', {}, error instanceof Error ? error.message : 'Unknown');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Internal server error' },
             { status: 500 }
