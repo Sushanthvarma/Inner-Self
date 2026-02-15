@@ -14,6 +14,23 @@ export interface ProcessResult {
     error?: string;
 }
 
+// BUG 7: Robust date validator — catches 'null', 'unknown', 'N/A' etc.
+function validateDate(raw: string | null | undefined): string {
+    if (!raw) return new Date().toISOString().split('T')[0];
+    const s = raw.trim().toLowerCase();
+    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
+        return new Date().toISOString().split('T')[0];
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+        return raw.trim().substring(0, 10);
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+}
+
 // ---- Full Processing Pipeline ----
 // text → save raw → extract → save entities → embed → update people → detect events
 // ---- Full Processing Pipeline ----
@@ -360,10 +377,8 @@ async function storeLifeEvent(
         return;
     }
 
-    // Use AI-extracted date, fall back to today only if truly no date provided
-    const eventDate = event.event_date && event.event_date !== 'null'
-        ? event.event_date
-        : new Date().toISOString().split('T')[0];
+    // BUG 7: Use robust validateDate helper
+    const eventDate = validateDate(event.event_date);
 
     await supabase.from('life_events_timeline').insert({
         id: uuidv4(),
@@ -421,7 +436,7 @@ async function storeHealthMetrics(
         value: m.value,
         unit: m.unit,
         status: m.status,
-        measured_at: m.date || new Date().toISOString().split('T')[0],
+        measured_at: validateDate(m.date),
         source_entry_id: sourceEntryId,
     }));
 
@@ -455,8 +470,13 @@ export async function processBackgroundFeatures(
             await storeLifeEvent(features.life_event_detected, entryId);
         }
 
+        // BUG 3: Health metrics should ONLY come from uploaded documents (process-document route).
+        // Brain dump extraction is too unreliable and causes duplicates.
+        // if (features.health_metrics.length > 0) {
+        //     await storeHealthMetrics(features.health_metrics, entryId);
+        // }
         if (features.health_metrics.length > 0) {
-            await storeHealthMetrics(features.health_metrics, entryId);
+            console.log(`[Background] Skipping ${features.health_metrics.length} health metrics from brain dump — health data only accepted from uploaded documents.`);
         }
 
         if (features.insights.length > 0) {

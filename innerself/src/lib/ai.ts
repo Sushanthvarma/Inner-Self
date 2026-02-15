@@ -828,14 +828,40 @@ You MUST respond with ONLY valid JSON.`;
 }
 
 // ---- Process Uploaded Document Content ----
-export async function processDocumentContent(
-    text: string,
-    fileType: string,
-    fileName: string
-): Promise<string> {
-    const isImage = text.startsWith('[IMAGE:');
+// BUG 2: Detect health reports and use strict extraction prompt
+function isHealthReport(fileName: string, text: string): boolean {
+    const nameHints = /\b(lab|report|blood|pathology|diagnostic|cbc|lipid|thyroid|metabolic|urinalysis|hematology|chemistry)\b/i;
+    const textHints = /\b(mg\/dL|mmol\/L|Reference Range|Laboratory|Pathology|Specimen|Normal Range|µIU\/mL|ng\/mL|g\/dL|IU\/L|U\/L|mEq\/L|cells\/mcL)\b/i;
+    return nameHints.test(fileName) || textHints.test(text.substring(0, 5000));
+}
 
-    const systemPrompt = `You are Inner Self's document analyzer for Sushanth Varma.
+const STRICT_HEALTH_PROMPT = `You are Inner Self's medical document analyzer for Sushanth Varma.
+
+This is a HEALTH/LAB REPORT. Extract medical metrics with EXTREME precision.
+
+RULES — READ CAREFULLY:
+1. ONLY extract values EXPLICITLY PRINTED in the document. NEVER infer, calculate, or guess values.
+2. Copy the EXACT metric name as printed (e.g., "Hemoglobin", not "Hgb" if the report says "Hemoglobin").
+3. Copy the EXACT numeric value as printed. Do NOT round or convert units.
+4. Copy the EXACT unit as printed (e.g., "g/dL", "mg/dL", "mmol/L").
+5. For status: Use the lab's own flag if present (H/L/Normal/Abnormal). If no flag, compare to the reference range printed on the report. If unclear, use "normal".
+6. For date: Use the COLLECTION DATE or REPORT DATE printed on the document. If only a year, use YYYY-01-01. If NO date at all, use "null".
+7. If a value is unclear, illegible, or ambiguous — SKIP IT entirely. Do NOT guess.
+8. Do NOT extract reference ranges as metric values.
+9. Do NOT extract non-numeric observations (e.g., "Negative", "Non-reactive") unless they have a numeric equivalent printed.
+
+Respond with ONLY JSON:
+{
+  "persona_updates": null,
+  "people": [],
+  "life_events": [],
+  "health_metrics": [{"metric": "exact name from report", "value": "exact number", "unit": "exact unit", "status": "normal|high|low", "date": "YYYY-MM-DD from report"}],
+  "insights": ["summary observations about overall health from this report"]
+}
+
+CRITICAL: Accuracy over quantity. It is MUCH better to return 5 correct metrics than 50 with guessed values.`;
+
+const GENERAL_DOC_PROMPT = `You are Inner Self's document analyzer for Sushanth Varma.
 
 A personal document has been uploaded. Analyze it and extract all personally relevant information.
 
@@ -846,7 +872,6 @@ Look for:
 - Personal details, values, beliefs
 - Behavioral patterns, habits
 - Career/professional information
-- Health, financial, or relationship details
 
 Respond with ONLY JSON:
 {
@@ -863,7 +888,20 @@ Respond with ONLY JSON:
 }
 
 CRITICAL: For life_events event_date, extract the REAL date from the document. If a resume says "2015-2018 HSBC", use "2015-01-01". If a report is dated "Jan 2024", use "2024-01-01". NEVER use today's date for historical events.
+For health_metrics: ONLY extract values EXPLICITLY printed in the document. Copy EXACT names, values, and units. NEVER guess or infer.
 Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
+
+export async function processDocumentContent(
+    text: string,
+    fileType: string,
+    fileName: string
+): Promise<string> {
+    const isImage = text.startsWith('[IMAGE:');
+
+    // BUG 2: Pick strict vs general prompt based on document type
+    const healthDoc = isHealthReport(fileName, text);
+    const systemPrompt = healthDoc ? STRICT_HEALTH_PROMPT : GENERAL_DOC_PROMPT;
+    console.log(`[AI] Document "${fileName}" detected as ${healthDoc ? 'HEALTH REPORT' : 'GENERAL DOCUMENT'}`);
 
     if (isImage) {
         // Parse image/document data — handle both complete and truncated base64

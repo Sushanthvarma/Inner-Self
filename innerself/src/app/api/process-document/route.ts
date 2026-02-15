@@ -5,7 +5,26 @@ import { getServiceSupabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Try to use max duration if allowed
+export const maxDuration = 60;
+
+// BUG 7: Validate date strings — catches 'null', 'unknown', 'N/A', empty, etc.
+function validateDate(raw: string | null | undefined): string {
+    if (!raw) return new Date().toISOString().split('T')[0];
+    const s = raw.trim().toLowerCase();
+    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
+        return new Date().toISOString().split('T')[0];
+    }
+    // Check it's a plausible date format (YYYY-MM-DD or similar)
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+        return raw.trim().substring(0, 10);
+    }
+    // Try parsing it
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -30,8 +49,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Document not found' }, { status: 404 });
         }
 
+        // BUG 5: REMOVED "Already processed" early return — allow re-processing
+        // Reset status to pending so we can reprocess
         if (doc.processing_status === 'completed') {
-            return NextResponse.json({ success: true, message: 'Already processed' });
+            console.log(`[ProcessDoc] Re-processing previously completed doc ${docId}`);
+            await supabase.from('uploaded_documents').update({
+                processing_status: 'pending',
+            }).eq('id', docId);
         }
 
         if (!doc.extracted_text) {
@@ -74,12 +98,11 @@ export async function POST(request: NextRequest) {
                 }
 
                 const { error: updateError } = await supabase.from('user_persona_summary').update(updates).eq('id', existing.id);
-                if (updateError) console.error('Persona update error:', updateError); // Log but don't fail whole process?
+                if (updateError) console.error('Persona update error:', updateError);
             } else {
-                // If no persona exists, create one (partial)
                 const { error: insertError } = await supabase.from('user_persona_summary').insert({
                     id: uuidv4(),
-                    ...parsed.persona_updates, // This might fail if mandatory fields are missing? But schema usually allows nulls except updated_at
+                    ...parsed.persona_updates,
                 });
                 if (insertError) console.error('Persona insert error:', insertError);
             }
@@ -120,11 +143,8 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Life Events
+        // Life Events — with dedup by docId
         if (parsed.life_events && parsed.life_events.length > 0) {
-            // Deduplicate: Delete existing events linked to this docId
-            // Note: If an event has multiple source_ids, this might be aggressive, 
-            // but for now 1 doc = 1 set of events is safer.
             const { error: deleteError } = await supabase
                 .from('life_events_timeline')
                 .delete()
@@ -135,7 +155,7 @@ export async function POST(request: NextRequest) {
             const eventRows = parsed.life_events.map(
                 (e: { title: string; description: string; significance: number; category: string; emotions: string[]; event_date?: string }) => ({
                     id: uuidv4(),
-                    event_date: (e.event_date && e.event_date !== 'null') ? e.event_date : new Date().toISOString().split('T')[0],
+                    event_date: validateDate(e.event_date),
                     title: e.title,
                     description: e.description,
                     significance: e.significance || 5,
@@ -152,23 +172,47 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Health Metrics
+        // BUG 1: Health Metrics — DELETE old metrics from this doc FIRST, then insert
         if (parsed.health_metrics && parsed.health_metrics.length > 0) {
+            // Step 1: Delete all existing metrics from this document (same pattern as life_events)
+            const { error: deleteMetricsError } = await supabase
+                .from('health_metrics')
+                .delete()
+                .eq('source_doc_id', docId);
+
+            if (deleteMetricsError) {
+                console.error('Error cleaning up old health metrics:', deleteMetricsError);
+            }
+
+            // Step 2: Also dedup by metric_name + measured_at across all docs
+            for (const m of parsed.health_metrics) {
+                const measuredAt = validateDate(m.date);
+                const { error: crossDedup } = await supabase
+                    .from('health_metrics')
+                    .delete()
+                    .eq('metric_name', m.metric)
+                    .eq('measured_at', measuredAt);
+                if (crossDedup) console.error('Cross-doc dedup error:', crossDedup);
+            }
+
+            // Step 3: Insert fresh metrics
             const metricsRows = parsed.health_metrics.map((m: any) => ({
                 id: uuidv4(),
                 metric_name: m.metric,
                 value: String(m.value),
                 unit: m.unit,
                 status: m.status,
-                measured_at: m.date || new Date().toISOString().split('T')[0],
+                measured_at: validateDate(m.date),
                 source_doc_id: docId
             }));
 
+            // BUG 5: Make health_metrics errors THROW instead of silent console.error
             const { error: metricsError } = await supabase.from('health_metrics').insert(metricsRows);
             if (metricsError) {
-                console.error('Error inserting health metrics (table likely missing):', metricsError.message);
-                // Don't fail the whole process
+                console.error('Error inserting health metrics:', metricsError.message);
+                throw new Error(`Failed to insert health metrics: ${metricsError.message}`);
             }
+            console.log(`[ProcessDoc] Inserted ${metricsRows.length} health metrics for doc ${docId}`);
         }
 
         // Insights
@@ -177,7 +221,6 @@ export async function POST(request: NextRequest) {
                 id: uuidv4(),
                 insight_text: text,
                 type: 'document_upload',
-                // source_entry_id omitted to avoid FK error content
             }));
 
             const { error: insightsError } = await supabase.from('insights').insert(insightRows);
@@ -185,11 +228,13 @@ export async function POST(request: NextRequest) {
         }
 
         // 4. Mark Doc Completed
+        const metricsCount = parsed.health_metrics?.length || 0;
         const { error: completeError } = await supabase.from('uploaded_documents').update({
             processing_status: 'completed',
             insights_generated: {
                 people_count: parsed.people?.length || 0,
                 events_count: parsed.life_events?.length || 0,
+                metrics_count: metricsCount,
                 insights_count: parsed.insights?.length || 0,
             },
         }).eq('id', docId);
@@ -203,13 +248,13 @@ export async function POST(request: NextRequest) {
             success: true,
             peopleFound: parsed.people?.length || 0,
             eventsFound: parsed.life_events?.length || 0,
+            metricsFound: metricsCount,
             insightsGenerated: parsed.insights?.length || 0,
         });
 
     } catch (error: any) {
         console.error('Process API error:', error);
 
-        // Try to update status to failed
         try {
             const supabase = getServiceSupabase();
             const { docId } = await request.clone().json().catch(() => ({}));
