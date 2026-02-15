@@ -202,8 +202,8 @@ export default function MirrorView() {
                                     }}
                                     placeholder={conversationHistory.length === 0 ? "Face the reflection..." : "Reply to the mirror..."}
                                     rows={1}
-                                    className="w-full bg-[#16161F] text-white border border-gray-700 rounded-xl px-4 py-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none overflow-hidden min-h-[56px] max-h-[150px]"
-                                    style={{ height: 'auto', minHeight: '56px' }}
+                                    className="w-full bg-[#16161F] text-gray-100 border border-gray-700 rounded-xl px-4 py-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none overflow-hidden min-h-[56px] max-h-[150px] placeholder-gray-500 appearance-none"
+                                    style={{ height: 'auto', minHeight: '56px', backgroundColor: '#16161F', color: '#E8E8ED' }}
                                     disabled={isProcessing}
                                 />
                                 <button

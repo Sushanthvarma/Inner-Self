@@ -181,6 +181,45 @@ export default function LogView() {
         return new Date(dateStr).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     };
 
+    const [activeFilter, setActiveFilter] = useState<'all' | 'reflections' | 'voice'>('all');
+
+    const filteredEntries = entries.filter(e => {
+        if (activeFilter === 'reflections') return e.extracted_entities?.[0]?.category === 'reflection' || e.raw_text.includes('[Mirror Session]');
+        if (activeFilter === 'voice') return e.source === 'voice';
+        return true;
+    });
+
+    const parseMirrorConversation = (text: string) => {
+        // Simple parser for "[Mirror Session]\nUser: ...\nMirror: ..." format
+        // Or "[Mirror asked: "..."]\n\nMy answer: ..."
+        const lines = text.split('\n');
+        const conversation: { role: 'user' | 'assistant'; content: string }[] = [];
+
+        let currentRole: 'user' | 'assistant' = 'user';
+        let currentContent = '';
+
+        lines.forEach(line => {
+            if (line.startsWith('User: ') || line.startsWith('My answer: ')) {
+                if (currentContent) conversation.push({ role: currentRole, content: currentContent.trim() });
+                currentRole = 'user';
+                currentContent = line.replace(/^(User: |My answer: )/, '');
+            } else if (line.startsWith('Mirror: ') || line.startsWith('The Mirror speaks: ')) {
+                if (currentContent) conversation.push({ role: currentRole, content: currentContent.trim() });
+                currentRole = 'assistant';
+                currentContent = line.replace(/^(Mirror: |The Mirror speaks: )/, '');
+            } else if (line.startsWith('[Mirror Session]') || line.startsWith('[Mirror asked:')) {
+                // Skip header or handle as context (maybe show as system msg?)
+                // For now, treat start of Mirror Session as context for first user msg if needed, 
+                // but usually the next line clarifies.
+            } else {
+                currentContent += '\n' + line;
+            }
+        });
+        if (currentContent) conversation.push({ role: currentRole, content: currentContent.trim() });
+
+        return conversation;
+    };
+
     if (loading) {
         return (
             <div className="log-loading">
@@ -204,18 +243,33 @@ export default function LogView() {
         <div className="log-view">
             <div className="log-header">
                 <h2>Your Log</h2>
-                <span className="entry-count">{entries.length} entries</span>
+                <div className="flex gap-2 bg-gray-900/50 p-1 rounded-lg border border-gray-800">
+                    {['all', 'reflections', 'voice'].map((filter) => (
+                        <button
+                            key={filter}
+                            onClick={() => setActiveFilter(filter as any)}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeFilter === filter
+                                    ? 'bg-gray-700 text-white shadow-sm'
+                                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                                }`}
+                        >
+                            {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            <MoodTrendChart entries={entries} />
+            {activeFilter === 'all' && <MoodTrendChart entries={entries} />}
 
             <div className="log-timeline">
-                {entries.map((entry) => {
+                {filteredEntries.map((entry) => {
                     const entity = entry.extracted_entities?.[0];
                     const isExpanded = expandedId === entry.id;
                     const isEditing = editingId === entry.id;
                     const moodColor = MOOD_COLORS[entity?.mood_score || 5] || '#FBBF24';
                     const selfTalk = SELF_TALK_INDICATOR[entity?.self_talk_tone || 'neutral'];
+
+                    const isReflection = entity?.category === 'reflection' || entry.raw_text.includes('[Mirror Session]');
 
                     return (
                         <div
@@ -235,7 +289,7 @@ export default function LogView() {
                                     </span>
                                     <div className="log-card-title-block">
                                         <h3 className="log-card-title">
-                                            {entity?.title || 'Untitled thought'}
+                                            {entity?.title || (isReflection ? 'Mirror Session' : 'Untitled thought')}
                                         </h3>
                                         <span className="log-card-time">
                                             {formatDate(entry.created_at)} · {formatTime(entry.created_at)}
@@ -297,9 +351,27 @@ export default function LogView() {
                                     </div>
                                 </div>
                             ) : (
-                                <p className="log-card-content">
-                                    {entity?.content || entry.raw_text}
-                                </p>
+                                <div className="log-card-content">
+                                    {isReflection ? (
+                                        <div className="flex flex-col gap-3 mt-2 bg-gray-900/30 p-3 rounded-lg border border-gray-800/50">
+                                            {parseMirrorConversation(entry.raw_text).map((msg, i) => (
+                                                <div key={i} className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                                    <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                                        {msg.role === 'user' ? 'You' : 'Mirror'}
+                                                    </span>
+                                                    <div className={`px-3 py-2 rounded-lg text-sm max-w-[90%] ${msg.role === 'user'
+                                                            ? 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/20 rounded-tr-sm'
+                                                            : 'bg-gray-800 text-gray-300 border border-gray-700 rounded-tl-sm'
+                                                        }`}>
+                                                        {msg.content}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p>{entity?.content || entry.raw_text}</p>
+                                    )}
+                                </div>
                             )}
 
                             {isExpanded && !isEditing && entity && (
