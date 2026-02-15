@@ -28,6 +28,7 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
     const [processingStep, setProcessingStep] = useState('');
     const [lastResult, setLastResult] = useState<ProcessResult | null>(null);
     const [mode, setMode] = useState<'idle' | 'typing' | 'voice'>('idle');
+    const [errorMessage, setErrorMessage] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const audioBlobRef = useRef<Blob | null>(null);
 
@@ -45,6 +46,7 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
         if (!text.trim() || isProcessing) return;
 
         setIsProcessing(true);
+        setErrorMessage('');
         const isVoice = mode === 'voice' || audioBlobRef.current !== null;
 
         try {
@@ -118,6 +120,8 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
             }
         } catch (error) {
             console.error('Processing error:', error);
+            setErrorMessage('Something went wrong while processing. Please try again.');
+            setTimeout(() => setErrorMessage(''), 6000);
         } finally {
             setIsProcessing(false);
             setProcessingStep('');
@@ -217,6 +221,13 @@ export default function BrainDump({ onProcessingComplete }: BrainDumpProps) {
                     </div>
                 )}
             </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+                <div className="ai-response-card" style={{ borderLeft: '3px solid var(--danger)' }}>
+                    <p className="response-text" style={{ color: 'var(--danger)' }}>{errorMessage}</p>
+                </div>
+            )}
 
             {/* AI Response */}
             {lastResult && (

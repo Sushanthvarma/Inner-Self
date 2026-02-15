@@ -2,47 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processDocumentContent } from '@/lib/ai';
 import { getServiceSupabase } from '@/lib/supabase';
+import { validateDate, validateDateNullable, validateLifeEvent, validatePerson } from '@/lib/validators';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-// For health metrics: defaults to today (measurement date is always "now" if unknown)
-function validateDate(raw: string | null | undefined): string {
-    if (!raw) return new Date().toISOString().split('T')[0];
-    const s = raw.trim().toLowerCase();
-    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
-        return new Date().toISOString().split('T')[0];
-    }
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
-        return raw.trim().substring(0, 10);
-    }
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-        return d.toISOString().split('T')[0];
-    }
-    return new Date().toISOString().split('T')[0];
-}
-
-// For LIFE EVENTS: returns null if date unknown. NEVER default to today for historical events.
-function validateDateNullable(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const s = raw.trim().toLowerCase();
-    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
-        return null;
-    }
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
-        return raw.trim().substring(0, 10);
-    }
-    if (/^\d{4}$/.test(raw.trim())) {
-        return raw.trim() + '-01-01';
-    }
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-        return d.toISOString().split('T')[0];
-    }
-    return null;
-}
 
 export async function POST(request: NextRequest) {
     try {
@@ -126,14 +90,17 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // People
+        // People (with centralized validation)
         if (parsed.people && parsed.people.length > 0) {
             const now = new Date().toISOString();
             for (const p of parsed.people) {
+                const validated = validatePerson(p);
+                if (!validated) continue;
+
                 const { data: existingPerson } = await supabase
                     .from('people_map')
                     .select('*')
-                    .ilike('name', p.name)
+                    .ilike('name', validated.name)
                     .single();
 
                 if (existingPerson) {
@@ -141,28 +108,29 @@ export async function POST(request: NextRequest) {
                         last_mentioned: now,
                         mention_count: (existingPerson.mention_count || 0) + 1,
                     }).eq('id', existingPerson.id);
-                    if (error) console.error(`Error updating person ${p.name}:`, error);
+                    if (error) console.error(`Error updating person ${validated.name}:`, error);
                 } else {
                     const { error } = await supabase.from('people_map').insert({
                         id: uuidv4(),
-                        name: p.name,
-                        relationship: p.relationship,
+                        name: validated.name,
+                        relationship: validated.relationship,
                         first_mentioned: now,
                         last_mentioned: now,
                         mention_count: 1,
-                        sentiment_avg: p.sentiment_avg,
-                        tags: p.tags || [],
+                        sentiment_avg: validated.sentiment_avg,
+                        tags: validated.tags,
                         sentiment_history: [
-                            { date: now, sentiment: p.sentiment_avg, context: `doc: ${doc.file_name}` },
+                            { date: now, sentiment: validated.sentiment_avg, context: `doc: ${doc.file_name}` },
                         ],
                     });
-                    if (error) console.error(`Error inserting person ${p.name}:`, error);
+                    if (error) console.error(`Error inserting person ${validated.name}:`, error);
                 }
             }
         }
 
-        // Life Events — with dedup by docId
+        // Life Events — with dedup by docId + title-based dedup + centralized validation
         if (parsed.life_events && parsed.life_events.length > 0) {
+            // Clean up old events from this doc
             const { error: deleteError } = await supabase
                 .from('life_events_timeline')
                 .delete()
@@ -170,23 +138,55 @@ export async function POST(request: NextRequest) {
 
             if (deleteError) console.error('Error cleaning up old events:', deleteError);
 
-            const eventRows = parsed.life_events.map(
-                (e: { title: string; description: string; significance: number; category: string; emotions: string[]; event_date?: string }) => ({
-                    id: uuidv4(),
-                    event_date: validateDateNullable(e.event_date),
-                    title: e.title,
-                    description: e.description,
-                    significance: e.significance || 5,
-                    category: e.category || 'personal',
-                    emotions: e.emotions || [],
-                    source_entry_ids: [docId],
-                })
-            );
+            // Fetch all existing events for title-based dedup
+            const { data: existingEvents } = await supabase
+                .from('life_events_timeline')
+                .select('id, title')
+                .limit(200);
 
-            const { error: eventsError } = await supabase.from('life_events_timeline').insert(eventRows);
-            if (eventsError) {
-                console.error('Error inserting life events:', eventsError);
-                throw new Error(`Failed to insert life events: ${eventsError.message}`);
+            const existingTitles = (existingEvents || []).map((e: { title: string }) => e.title.toLowerCase());
+
+            const eventRows = parsed.life_events
+                .map((e: { title?: string; description?: string; significance?: number; category?: string; emotions?: string[]; event_date?: string }) => {
+                    const validated = validateLifeEvent(e);
+                    if (!validated) return null;
+
+                    // Title-based dedup: skip if similar title already exists
+                    const newLower = validated.title.toLowerCase();
+                    const prefix = newLower.substring(0, 40);
+                    const isDuplicate = existingTitles.some(existing =>
+                        existing === newLower ||
+                        existing.substring(0, 40) === prefix ||
+                        existing.includes(newLower) ||
+                        newLower.includes(existing)
+                    );
+                    if (isDuplicate) {
+                        console.log(`[ProcessDoc] Skipping duplicate event: "${validated.title}"`);
+                        return null;
+                    }
+
+                    // Add to existing titles to prevent intra-batch duplicates
+                    existingTitles.push(newLower);
+
+                    return {
+                        id: uuidv4(),
+                        event_date: validated.event_date,
+                        title: validated.title,
+                        description: validated.description,
+                        significance: validated.significance,
+                        category: validated.category,
+                        emotions: validated.emotions,
+                        source_entry_ids: [docId],
+                    };
+                })
+                .filter(Boolean);
+
+            if (eventRows.length > 0) {
+                const { error: eventsError } = await supabase.from('life_events_timeline').insert(eventRows);
+                if (eventsError) {
+                    console.error('Error inserting life events:', eventsError);
+                    throw new Error(`Failed to insert life events: ${eventsError.message}`);
+                }
             }
         }
 

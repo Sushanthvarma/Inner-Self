@@ -21,6 +21,7 @@ export default function VoiceRecorder({
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const fullTranscriptRef = useRef('');
+    const isRecordingRef = useRef(false);
 
     useEffect(() => {
         const SpeechRecognition =
@@ -65,8 +66,8 @@ export default function VoiceRecorder({
         };
 
         recognition.onend = () => {
-            // Auto-restart if still recording
-            if (isRecording && recognitionRef.current) {
+            // Auto-restart if still recording (use ref to avoid stale closure)
+            if (isRecordingRef.current && recognitionRef.current) {
                 try {
                     recognition.start();
                 } catch {
@@ -90,6 +91,7 @@ export default function VoiceRecorder({
         setTranscript('');
         setInterimTranscript('');
         setIsRecording(true);
+        isRecordingRef.current = true;
         onRecordingChange(true);
 
         // Start SpeechRecognition (real-time text preview)
@@ -139,6 +141,7 @@ export default function VoiceRecorder({
         if (!recognitionRef.current) return;
 
         setIsRecording(false);
+        isRecordingRef.current = false;
         onRecordingChange(false);
         recognitionRef.current.stop();
 

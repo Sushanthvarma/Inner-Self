@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 interface LifeEventItem {
     id: string;
-    event_date: string;
+    event_date: string | null;
     title: string;
     description: string;
     significance: number;
@@ -38,6 +39,31 @@ interface GapQuestion {
     category: string;
 }
 
+// ---- Timezone-safe date helpers ----
+// Supabase returns DATE columns as "YYYY-MM-DD" strings.
+// new Date("2013-01-01") parses as UTC midnight, which in IST becomes Dec 31 previous year.
+// These helpers parse dates WITHOUT timezone shifts.
+function parseLocalDate(dateStr: string): Date {
+    // Handle "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS..." formats
+    const parts = dateStr.substring(0, 10).split('-');
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+}
+
+function formatEventDate(dateStr: string | null, options?: Intl.DateTimeFormatOptions): string {
+    if (!dateStr) return 'Date unknown';
+    const d = parseLocalDate(dateStr);
+    if (isNaN(d.getTime())) return 'Date unknown';
+    return d.toLocaleDateString('en-IN', options || { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function getEventYear(dateStr: string): string {
+    return dateStr.substring(0, 4);
+}
+
+function getEventTime(dateStr: string): number {
+    return parseLocalDate(dateStr).getTime();
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
     career: '#3B82F6',
     family: '#EC4899',
@@ -46,6 +72,10 @@ const CATEGORY_COLORS: Record<string, string> = {
     personal: '#8B5CF6',
     loss: '#6B7280',
     achievement: '#F59E0B',
+    education: '#06B6D4',
+    finance: '#F97316',
+    professional_achievement: '#EAB308',
+    personal_development: '#A78BFA',
 };
 
 const getSignificanceColor = (n: number): string => {
@@ -118,10 +148,18 @@ export default function LifeView() {
 
     const handleEditClick = (event: LifeEventItem) => {
         setEditingEventId(event.id);
+        // Ensure date is in YYYY-MM-DD format for HTML date input
+        let dateForInput = '';
+        if (event.event_date) {
+            const d = event.event_date.substring(0, 10); // handles both "2010-01-01" and "2010-01-01T00:00:00Z"
+            if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+                dateForInput = d;
+            }
+        }
         setEditForm({
             title: event.title,
             description: event.description,
-            event_date: event.event_date,
+            event_date: dateForInput,
             category: event.category,
             significance: event.significance,
         });
@@ -240,25 +278,39 @@ export default function LifeView() {
     }, [events, filterCategory, filterPerson, filterEmotion]);
 
     // Group events by year for chronological timeline
+    // Events with null/invalid dates go into an "Undated" group at the end
     const timelineByYear = useMemo(() => {
-        const sorted = [...filteredEvents].sort(
-            (a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
-        );
+        const sorted = [...filteredEvents].sort((a, b) => {
+            if (!a.event_date && !b.event_date) return 0;
+            if (!a.event_date) return 1;  // nulls go last
+            if (!b.event_date) return -1;
+            return getEventTime(a.event_date) - getEventTime(b.event_date);
+        });
         const groups: Record<string, LifeEventItem[]> = {};
         sorted.forEach((event) => {
-            const year = new Date(event.event_date).getFullYear().toString();
-            if (!groups[year]) groups[year] = [];
-            groups[year].push(event);
+            if (!event.event_date) {
+                if (!groups['Undated']) groups['Undated'] = [];
+                groups['Undated'].push(event);
+            } else {
+                const year = getEventYear(event.event_date);
+                if (!groups[year]) groups[year] = [];
+                groups[year].push(event);
+            }
         });
-        return Object.entries(groups).sort(([a], [b]) => Number(a) - Number(b));
+        return Object.entries(groups).sort(([a], [b]) => {
+            if (a === 'Undated') return 1;
+            if (b === 'Undated') return -1;
+            return Number(a) - Number(b);
+        });
     }, [filteredEvents]);
 
     // Stats for events
     const eventsStats = useMemo(() => {
         if (filteredEvents.length === 0) return null;
-        const dates = filteredEvents.map((e) => new Date(e.event_date).getTime());
-        const minDate = new Date(Math.min(...dates));
-        const maxDate = new Date(Math.max(...dates));
+        const datedEvents = filteredEvents.filter((e) => e.event_date);
+        const dates = datedEvents.map((e) => getEventTime(e.event_date!));
+        const minDate = dates.length > 0 ? parseLocalDate(datedEvents.reduce((a, b) => a.event_date! < b.event_date! ? a : b).event_date!) : new Date();
+        const maxDate = dates.length > 0 ? parseLocalDate(datedEvents.reduce((a, b) => a.event_date! > b.event_date! ? a : b).event_date!) : new Date();
         const categoryBreakdown: Record<string, number> = {};
         filteredEvents.forEach((e) => {
             categoryBreakdown[e.category] = (categoryBreakdown[e.category] || 0) + 1;
@@ -544,152 +596,8 @@ export default function LifeView() {
                                                 className="chrono-event"
                                                 style={{ borderLeftColor: CATEGORY_COLORS[event.category] || '#6B7280' }}
                                             >
-                                                {/* Edit Modal Overlay */}
-                                                {editingEventId === event.id && (
-                                                    <div className="edit-event-overlay">
-                                                        <div
-                                                            className="edit-event-content"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <div className="edit-event-header">
-                                                                <h3 className="edit-event-heading">Edit Event</h3>
-                                                                <button
-                                                                    onClick={() => setEditingEventId(null)}
-                                                                    className="edit-event-close"
-                                                                >
-                                                                    ✕
-                                                                </button>
-                                                            </div>
-
-                                                            <div className="edit-event-body">
-                                                                <div className="edit-event-field">
-                                                                    <label className="edit-event-label">Title</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={editForm.title}
-                                                                        onChange={(e) =>
-                                                                            setEditForm({ ...editForm, title: e.target.value })
-                                                                        }
-                                                                        className="edit-event-input"
-                                                                        placeholder="Event Title"
-                                                                    />
-                                                                </div>
-
-                                                                <div className="edit-event-field">
-                                                                    <label className="edit-event-label">Description</label>
-                                                                    <textarea
-                                                                        value={editForm.description}
-                                                                        onChange={(e) =>
-                                                                            setEditForm({
-                                                                                ...editForm,
-                                                                                description: e.target.value,
-                                                                            })
-                                                                        }
-                                                                        className="edit-event-textarea"
-                                                                        placeholder="What happened?"
-                                                                    />
-                                                                </div>
-
-                                                                <div
-                                                                    className="edit-event-field"
-                                                                    style={{
-                                                                        display: 'grid',
-                                                                        gridTemplateColumns: '1fr 1fr',
-                                                                        gap: '16px',
-                                                                    }}
-                                                                >
-                                                                    <div className="edit-event-field">
-                                                                        <label className="edit-event-label">Date</label>
-                                                                        <input
-                                                                            type="date"
-                                                                            value={editForm.event_date}
-                                                                            onChange={(e) =>
-                                                                                setEditForm({
-                                                                                    ...editForm,
-                                                                                    event_date: e.target.value,
-                                                                                })
-                                                                            }
-                                                                            className="edit-event-input"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="edit-event-field">
-                                                                        <label className="edit-event-label">Category</label>
-                                                                        <select
-                                                                            value={editForm.category}
-                                                                            onChange={(e) =>
-                                                                                setEditForm({
-                                                                                    ...editForm,
-                                                                                    category: e.target.value,
-                                                                                })
-                                                                            }
-                                                                            className="edit-event-select"
-                                                                        >
-                                                                            {Object.keys(CATEGORY_COLORS).map((c) => (
-                                                                                <option key={c} value={c}>
-                                                                                    {c.charAt(0).toUpperCase() + c.slice(1)}
-                                                                                </option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="edit-event-field">
-                                                                    <div className="edit-event-range-header">
-                                                                        <label className="edit-event-label">
-                                                                            Impact &amp; Significance
-                                                                        </label>
-                                                                        <span
-                                                                            className="edit-event-range-value"
-                                                                            style={{ color: 'var(--accent-primary)' }}
-                                                                        >
-                                                                            {editForm.significance}/10
-                                                                        </span>
-                                                                    </div>
-                                                                    <input
-                                                                        type="range"
-                                                                        min="1"
-                                                                        max="10"
-                                                                        value={editForm.significance}
-                                                                        onChange={(e) =>
-                                                                            setEditForm({
-                                                                                ...editForm,
-                                                                                significance: parseInt(e.target.value),
-                                                                            })
-                                                                        }
-                                                                        className="edit-event-range"
-                                                                    />
-                                                                    <div className="edit-event-range-labels">
-                                                                        <span>Minor</span>
-                                                                        <span>Major</span>
-                                                                        <span>Life Changing</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="edit-event-footer">
-                                                                <button
-                                                                    onClick={() => setEditingEventId(null)}
-                                                                    className="edit-btn cancel"
-                                                                >
-                                                                    Cancel
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleSaveEvent(event.id)}
-                                                                    className="edit-btn save"
-                                                                >
-                                                                    Save Changes
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
                                                 <div className="chrono-event-date">
-                                                    {new Date(event.event_date).toLocaleDateString('en-IN', {
-                                                        day: 'numeric',
-                                                        month: 'short',
-                                                        year: 'numeric',
-                                                    })}
+                                                    {formatEventDate(event.event_date)}
                                                 </div>
                                                 <div className="event-title-row">
                                                     <h3 className="chrono-event-title">{event.title}</h3>
@@ -907,10 +815,9 @@ export default function LifeView() {
                                                 <span>{person.mention_count} mentions</span>
                                                 <span>
                                                     Last:{' '}
-                                                    {new Date(person.last_mentioned).toLocaleDateString(
-                                                        'en-IN',
-                                                        { day: 'numeric', month: 'short' }
-                                                    )}
+                                                    {person.last_mentioned
+                                                        ? formatEventDate(person.last_mentioned, { day: 'numeric', month: 'short' })
+                                                        : 'Unknown'}
                                                 </span>
                                             </div>
                                             <div className="mention-bar">
@@ -946,16 +853,13 @@ export default function LifeView() {
                                 <span className="biography-date">
                                     Generated{' '}
                                     {biography.generated_at
-                                        ? new Date(biography.generated_at).toLocaleDateString(
-                                              'en-IN',
-                                              {
-                                                  day: 'numeric',
-                                                  month: 'short',
-                                                  year: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit',
-                                              }
-                                          )
+                                        ? formatEventDate(biography.generated_at, {
+                                              day: 'numeric',
+                                              month: 'short',
+                                              year: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                          })
                                         : ''}
                                 </span>
                                 <div className="bio-actions">
@@ -1066,6 +970,92 @@ export default function LifeView() {
             ) : activeTab === 'letters' ? (
                 <LetterToFuture />
             ) : null}
+
+            {/* Edit Event Modal — rendered via portal to escape stacking context */}
+            {editingEventId && typeof document !== 'undefined' && createPortal(
+                <div className="edit-event-overlay" onClick={() => setEditingEventId(null)}>
+                    <div className="edit-event-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="edit-event-header">
+                            <h3 className="edit-event-heading">Edit Event</h3>
+                            <button onClick={() => setEditingEventId(null)} className="edit-event-close">
+                                ✕
+                            </button>
+                        </div>
+                        <div className="edit-event-body">
+                            <div className="edit-event-field">
+                                <label className="edit-event-label">Title</label>
+                                <input
+                                    type="text"
+                                    value={editForm.title}
+                                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                    className="edit-event-input"
+                                    placeholder="Event Title"
+                                />
+                            </div>
+                            <div className="edit-event-field">
+                                <label className="edit-event-label">Description</label>
+                                <textarea
+                                    value={editForm.description}
+                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                    className="edit-event-textarea"
+                                    placeholder="What happened?"
+                                />
+                            </div>
+                            <div className="edit-event-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div className="edit-event-field">
+                                    <label className="edit-event-label">Date</label>
+                                    <input
+                                        type="date"
+                                        value={editForm.event_date}
+                                        onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                                        className="edit-event-input"
+                                    />
+                                </div>
+                                <div className="edit-event-field">
+                                    <label className="edit-event-label">Category</label>
+                                    <select
+                                        value={editForm.category}
+                                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                        className="edit-event-select"
+                                    >
+                                        {Object.keys(CATEGORY_COLORS).map((c) => (
+                                            <option key={c} value={c}>
+                                                {c.charAt(0).toUpperCase() + c.slice(1)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="edit-event-field">
+                                <div className="edit-event-range-header">
+                                    <label className="edit-event-label">Impact &amp; Significance</label>
+                                    <span className="edit-event-range-value" style={{ color: 'var(--accent-primary)' }}>
+                                        {editForm.significance}/10
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="10"
+                                    value={editForm.significance}
+                                    onChange={(e) => setEditForm({ ...editForm, significance: parseInt(e.target.value) })}
+                                    className="edit-event-range"
+                                />
+                                <div className="edit-event-range-labels">
+                                    <span>Minor</span>
+                                    <span>Major</span>
+                                    <span>Life Changing</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="edit-event-footer">
+                            <button onClick={() => setEditingEventId(null)} className="edit-btn cancel">Cancel</button>
+                            <button onClick={() => handleSaveEvent(editingEventId)} className="edit-btn save">Save Changes</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }

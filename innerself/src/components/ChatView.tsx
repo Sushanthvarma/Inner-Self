@@ -16,8 +16,42 @@ export default function ChatView() {
     const [selectedPersona, setSelectedPersona] = useState<AIPersona>('friend');
     const [isLoading, setIsLoading] = useState(false);
     const [showPersonaSelect, setShowPersonaSelect] = useState(false);
+    const [historyLoaded, setHistoryLoaded] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Load recent chat history from DB on mount
+    useEffect(() => {
+        if (historyLoaded) return;
+        const loadHistory = async () => {
+            try {
+                const res = await fetch('/api/entries?type=system_activity');
+                if (!res.ok) throw new Error('Failed to fetch');
+                const data = await res.json();
+                const chatMessages = (data.activity || [])
+                    .filter((a: { type: string }) => a.type === 'chat')
+                    .reverse() // oldest first — API returns newest first
+                    .slice(-20) // keep last 20 messages
+                    .map((a: { role: string; content: string; persona?: string }) => ({
+                        role: a.role as 'user' | 'assistant',
+                        content: a.content,
+                        persona: a.persona || selectedPersona,
+                    }));
+                if (chatMessages.length > 0) {
+                    setMessages(chatMessages);
+                    // Set persona to match the last message's persona
+                    const lastPersona = chatMessages[chatMessages.length - 1]?.persona;
+                    if (lastPersona) setSelectedPersona(lastPersona);
+                }
+            } catch (err) {
+                console.error('Failed to load chat history:', err);
+            } finally {
+                setHistoryLoaded(true);
+            }
+        };
+        loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -104,6 +138,9 @@ export default function ChatView() {
                                     key={p.id}
                                     className={`persona-option ${selectedPersona === p.id ? 'selected' : ''}`}
                                     onClick={() => {
+                                        if (p.id !== selectedPersona) {
+                                            setMessages([]); // Clear messages on persona switch
+                                        }
                                         setSelectedPersona(p.id);
                                         setShowPersonaSelect(false);
                                     }}

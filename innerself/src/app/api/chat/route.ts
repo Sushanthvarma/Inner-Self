@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponse, extractFromChatMessage } from '@/lib/ai';
 import { hybridSearch, getPersonaSummary, getEnrichedChatContext } from '@/lib/embeddings';
 import { getServiceSupabase } from '@/lib/supabase';
+import { storeLifeEvent } from '@/lib/extraction';
+import { validatePerson } from '@/lib/validators';
 import { v4 as uuidv4 } from 'uuid';
 import type { AIPersona } from '@/types';
 
@@ -108,12 +110,13 @@ async function extractAndStoreFromChat(
 
     // 1. Update people map (this is valid — chat reveals relationships)
     for (const person of extraction.people_mentioned) {
-        if (!person.name || person.name.length < 2) continue;
+        const validated = validatePerson(person);
+        if (!validated) continue;
 
         const { data: existing } = await supabase
             .from('people_map')
             .select('id, mention_count')
-            .ilike('name', person.name)
+            .ilike('name', validated.name)
             .maybeSingle();
 
         if (existing) {
@@ -124,40 +127,20 @@ async function extractAndStoreFromChat(
         } else {
             await supabase.from('people_map').insert({
                 id: uuidv4(),
-                name: person.name,
-                relationship: person.relationship || 'unknown',
+                name: validated.name,
+                relationship: validated.relationship,
                 first_mentioned: now,
                 last_mentioned: now,
                 mention_count: 1,
-                sentiment_avg: person.sentiment === 'positive' ? 7 : person.sentiment === 'negative' ? 3 : 5,
-                tags: [],
+                sentiment_avg: validated.sentiment_avg,
+                tags: validated.tags,
             });
         }
     }
 
-    // 2. Store life event if detected (this is valid — chat reveals events)
+    // 2. Store life event if detected — uses centralized storeLifeEvent with full validation
     if (extraction.life_event_detected) {
-        const event = extraction.life_event_detected;
-        // Dedup: check if similar event already exists
-        const { data: existingEvent } = await supabase
-            .from('life_events_timeline')
-            .select('id')
-            .ilike('title', event.title)
-            .limit(1);
-
-        if (!existingEvent || existingEvent.length === 0) {
-            await supabase.from('life_events_timeline').insert({
-                id: uuidv4(),
-                event_date: now.split('T')[0],
-                title: event.title,
-                description: event.description,
-                significance: event.significance || 5,
-                category: event.category || 'personal',
-                emotions: event.emotions || [],
-                people_involved: event.people_involved || [],
-                source_entry_ids: [],
-            });
-        }
+        await storeLifeEvent(extraction.life_event_detected, 'chat');
     }
 
     // 3. Store insights (to insights table only, not raw_entries)

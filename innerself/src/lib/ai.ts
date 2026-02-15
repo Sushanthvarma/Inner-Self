@@ -496,7 +496,13 @@ RULES:
 - Insights should be DEEP: "You intellectualize after conflict" not "You had a hard day."
 - DREAMS: Only actual sleeping dreams. "I had a weird dream where..." = YES. "My dream is to build a company" = NO.
 - COURAGE: Even small moments count. Don't over-flag — the act must involve some personal risk or discomfort.
-- CRITICAL: For event_date, extract the ACTUAL date/year from the text. NEVER default to today unless the event truly happened today.`;
+- CRITICAL: For event_date, extract the ACTUAL date/year from the text. NEVER default to today unless the event truly happened today. If no date is stated, use null.
+
+ANTI-HALLUCINATION RULES:
+- ONLY extract data that is EXPLICITLY stated in the entry text.
+- Do NOT fabricate dates, company names, people, or events. If the user didn't mention it, don't create it.
+- Do NOT use placeholder text from this prompt template as data (e.g. "Short title", "What happened", "deep observation 1").
+- If unsure whether something is a real event or just a passing mention, err on the side of null/skip.`;
 
 export async function extractBackgroundFeatures(
     rawText: string,
@@ -615,7 +621,7 @@ export async function extractFromChatMessage(
     personaSummary: string = ''
 ): Promise<{
     people_mentioned: { name: string; relationship: string; sentiment: string; context: string }[];
-    life_event_detected: { title: string; description: string; significance: number; category: string; emotions: string[]; people_involved: string[] } | null;
+    life_event_detected: { title: string; description: string; significance: number; category: string; emotions: string[]; people_involved: string[]; event_date?: string } | null;
     is_task: boolean;
     task_title: string | null;
     task_due_date: string | null;
@@ -629,9 +635,15 @@ RULES:
 - Extract any meaningful data. Casual "hi" or "how are you" messages = should_extract: false.
 - People: Only real names, not pronouns. Include relationship if inferrable.
 - Life events: Flag ANY noteworthy event or experience — work updates, social events, health changes, achievements (big or small), decisions made, conflicts, emotional breakthroughs, new habits, conversations that mattered, plans made, places visited. If something happened worth remembering, flag it. significance: 1-3 for small moments, 4-6 for moderate, 7-10 for life-changing.
+- Life events MUST include "event_date" field: use "YYYY-MM-DD" if stated, or null if unknown. NEVER guess dates.
 - Tasks: Only clear actionable items the user committed to doing.
 - Mood: Estimate from tone (1=very low, 5=neutral, 10=very high).
 - Insights: Brief observations about patterns or emotional state. Skip if nothing notable.
+
+ANTI-HALLUCINATION RULES:
+- ONLY extract data the user EXPLICITLY stated in their message.
+- Do NOT fabricate names, dates, events, or details not present in the text.
+- If nothing meaningful is present, return should_extract: false.
 
 Respond with ONLY valid JSON.`;
 
@@ -834,13 +846,19 @@ Also extract:
 - Initial insights about the person
 
 IMPORTANT: Extract as many life events as possible from the answers. Even implied events count.
-For example, if someone mentions "my wife" — that's a marriage event. If they mention "my job at Google" — that's a career event.
+For example, if someone mentions "my wife" — infer a marriage event. If they mention a job at a company — infer a career event.
+
+ANTI-HALLUCINATION RULES:
+- ONLY extract events, people, and facts that the user EXPLICITLY stated or clearly implied.
+- Do NOT invent events from the examples above. Those are patterns to look for, NOT data to insert.
+- Do NOT fabricate company names, dates, or details. If something is not stated, leave it out.
+- For event_date: extract ONLY dates explicitly mentioned. If no date is stated or inferrable, use null.
 
 Format as:
 {
   "persona_summary": { ... UserPersonaSummary fields ... },
   "people": [{"name": "", "relationship": "", "sentiment_avg": 5, "tags": []}],
-  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": [], "event_date": "YYYY-MM-DD or YYYY-01-01 if only year known"}],
+  "life_events": [{"title": "", "description": "", "significance": 1-10, "category": "", "emotions": [], "event_date": "YYYY-MM-DD or YYYY-01-01 if only year known, or null if unknown"}],
   "insights": ["insight text 1", "insight text 2"]
 }
 
@@ -913,9 +931,16 @@ Respond with ONLY JSON:
   "insights": ["observations from this document"]
 }
 
-CRITICAL: For life_events event_date, extract the REAL date from the document. If a resume says "2015-2018 HSBC", use "2015-01-01". If a report is dated "Jan 2024", use "2024-01-01". NEVER use today's date for historical events.
-For health_metrics: ONLY extract values EXPLICITLY printed in the document. Copy EXACT names, values, and units. NEVER guess or infer.
-Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
+CRITICAL DATE RULES:
+- For life_events event_date, extract the REAL date from the document. If a resume lists "2015-2018" for a role, use the start year as "2015-01-01". If a report is dated "Jan 2024", use "2024-01-01".
+- NEVER use today's date for historical events. If no date is stated, use null.
+- NEVER fabricate or guess dates. Only use dates explicitly present in the document.
+
+ANTI-HALLUCINATION RULES:
+- For health_metrics: ONLY extract values EXPLICITLY printed in the document. Copy EXACT names, values, and units. NEVER guess or infer.
+- For people: ONLY extract names that appear in the document. Do NOT invent people.
+- For life_events: ONLY extract events described in the document. Do NOT add events from examples in this prompt.
+- Only include fields where you found relevant information. Use empty arrays for fields with no data.`;
 
 export async function processDocumentContent(
     text: string,
@@ -1175,7 +1200,7 @@ Respond with JSON:
             "event_title": "Original event title",
             "event_date": "YYYY-MM-DD",
             "years_ago": number,
-            "reflection": "A warm 2-3 sentence reflection. E.g. 'One year ago today, you left HSBC. That took courage. How does it feel looking back now?'",
+            "reflection": "A warm 2-3 sentence reflection referencing the actual event. Make it personal and specific to what happened.",
             "emotional_weight": "light|medium|heavy"
         }
     ]

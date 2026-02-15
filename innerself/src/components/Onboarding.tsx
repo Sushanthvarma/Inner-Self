@@ -21,6 +21,7 @@ export default function Onboarding({ onComplete, onSkip, startFromQuestion = 0, 
     const [phase, setPhase] = useState<'welcome' | 'questions' | 'processing'>(
         startFromQuestion > 0 ? 'questions' : 'welcome'
     );
+    const [showHistory, setShowHistory] = useState(false);
 
     const phaseNames = ['Foundation', 'Foundation', 'Foundation', 'Foundation', 'Foundation',
         'Your People', 'Your People', 'Your People', 'Your People',
@@ -205,14 +206,11 @@ export default function Onboarding({ onComplete, onSkip, startFromQuestion = 0, 
                 <div className="onboarding-history">
                     <button
                         className="history-toggle"
-                        onClick={() => {
-                            const el = document.querySelector('.history-list');
-                            el?.classList.toggle('visible');
-                        }}
+                        onClick={() => setShowHistory(!showHistory)}
                     >
-                        View previous answers ({answers.length})
+                        {showHistory ? 'Hide' : 'View'} previous answers ({answers.length})
                     </button>
-                    <div className="history-list">
+                    <div className={`history-list ${showHistory ? 'visible' : ''}`}>
                         {answers.map((a, i) => (
                             <div key={i} className="history-item">
                                 <span className="history-q">Q{i + 1}:</span> {a.answer.substring(0, 100)}

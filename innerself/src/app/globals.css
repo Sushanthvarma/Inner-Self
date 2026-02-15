@@ -165,6 +165,21 @@ input, textarea, select {
   font-size: inherit;
 }
 
+/* ALL select dropdowns & options must have solid backgrounds — prevents see-through on dark themes */
+select {
+  background-color: #12121e !important;
+}
+select option {
+  background: #1a1a2e;
+  color: #e2e2f0;
+  padding: 8px 12px;
+}
+select option:checked,
+select option:hover {
+  background: #2d2b55;
+  color: #fff;
+}
+
 img, svg {
   display: block;
   max-width: 100%;
@@ -694,9 +709,7 @@ ul, ol {
 .processing-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 8, 13, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: #08080d;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1843,16 +1856,19 @@ ul, ol {
   justify-content: center;
 }
 .edit-event-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: rgba(8, 8, 13, 0.8);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  background: #08080d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 .edit-event-content {
   position: relative;
-  width: 90%;
-  max-width: 520px;
+  width: 92%;
+  max-width: 540px;
   max-height: 85dvh;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -1861,7 +1877,7 @@ ul, ol {
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s var(--ease-out);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.05);
 }
 .edit-event-header {
   padding: 18px 20px;
@@ -2203,9 +2219,7 @@ ul, ol {
 .persona-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 8, 13, 0.75);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: #08080d;
   z-index: 300;
   display: flex;
   align-items: center;
@@ -2649,9 +2663,7 @@ ul, ol {
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 8, 13, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: #08080d;
   z-index: 400;
   animation: fadeIn 0.2s ease;
 }

@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processOnboarding } from '@/lib/ai';
 import { getServiceSupabase } from '@/lib/supabase';
+import { storeLifeEvent } from '@/lib/extraction';
+import { validatePerson } from '@/lib/validators';
 import { v4 as uuidv4 } from 'uuid';
 import { ONBOARDING_QUESTIONS } from '@/lib/personas';
 
@@ -45,43 +47,34 @@ export async function POST(request: NextRequest) {
             ...parsed.persona_summary,
         });
 
-        // Save extracted people
+        // Save extracted people (with validation)
         if (parsed.people && parsed.people.length > 0) {
             const now = new Date().toISOString();
-            const peopleRows = parsed.people.map(
-                (p: { name: string; relationship: string; sentiment_avg: number; tags: string[] }) => ({
+            for (const p of parsed.people) {
+                const validated = validatePerson(p);
+                if (!validated) continue;
+
+                await supabase.from('people_map').insert({
                     id: uuidv4(),
-                    name: p.name,
-                    relationship: p.relationship,
+                    name: validated.name,
+                    relationship: validated.relationship,
                     first_mentioned: now,
                     last_mentioned: now,
                     mention_count: 1,
-                    sentiment_avg: p.sentiment_avg,
-                    tags: p.tags || [],
+                    sentiment_avg: validated.sentiment_avg,
+                    tags: validated.tags,
                     sentiment_history: [
-                        { date: now, sentiment: p.sentiment_avg, context: 'onboarding' },
+                        { date: now, sentiment: validated.sentiment_avg, context: 'onboarding' },
                     ],
-                })
-            );
-
-            await supabase.from('people_map').insert(peopleRows);
+                });
+            }
         }
 
-        // Save life events
+        // Save life events — uses centralized storeLifeEvent with full validation
         if (parsed.life_events && parsed.life_events.length > 0) {
-            const eventRows = parsed.life_events.map(
-                (e: { title: string; description: string; significance: number; category: string; emotions: string[] }) => ({
-                    id: uuidv4(),
-                    event_date: new Date().toISOString().split('T')[0],
-                    title: e.title,
-                    description: e.description,
-                    significance: e.significance,
-                    category: e.category,
-                    emotions: e.emotions,
-                })
-            );
-
-            await supabase.from('life_events_timeline').insert(eventRows);
+            for (const e of parsed.life_events) {
+                await storeLifeEvent(e, 'onboarding');
+            }
         }
 
         // Save initial insights

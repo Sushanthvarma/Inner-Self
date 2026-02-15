@@ -61,6 +61,17 @@ const CATEGORY_COLORS: Record<string, string> = {
     idea: '#A78BFA',
     gratitude: '#10B981',
     vent: '#EF4444',
+    career: '#3B82F6',
+    family: '#EC4899',
+    health: '#10B981',
+    relationship: '#F43F5E',
+    personal: '#8B5CF6',
+    loss: '#6B7280',
+    achievement: '#F59E0B',
+    education: '#06B6D4',
+    finance: '#F97316',
+    professional_achievement: '#EAB308',
+    personal_development: '#A78BFA',
 };
 
 const SELF_TALK_INDICATOR: Record<string, { emoji: string; color: string }> = {
@@ -301,8 +312,15 @@ export default function LogView() {
             }
         } catch (error) {
             console.error('Failed to fetch entries:', error);
-            // @ts-ignore
-            setEntries([{ id: 'error', raw_text: `Error: ${error.message}`, created_at: new Date().toISOString() }]);
+            const errMsg = error instanceof Error ? error.message : 'Unknown error';
+            setEntries([{
+                id: 'error',
+                raw_text: `Error: ${errMsg}`,
+                created_at: new Date().toISOString(),
+                source: 'text',
+                audio_url: null,
+                extracted_entities: [],
+            } as LogEntry]);
         } finally {
             setLoading(false);
         }

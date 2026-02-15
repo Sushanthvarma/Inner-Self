@@ -11,7 +11,7 @@ async function test() {
 
     // Use a fake entry ID but real text that should trigger detectors
     const fakeEntryId = "00000000-0000-0000-0000-000000000000";
-    const text = "I started a new job at Google today! I'm feeling excited but nervous. Also my weight is 72kg which is good.";
+    const text = "I started a new job at Acme Corp today! I'm feeling excited but nervous. Also my weight is 72kg which is good.";
 
     console.log(`Analyzing: "${text}"`);
 
@@ -20,7 +20,7 @@ async function test() {
 
         if (result.success) {
             console.log("✅ processBackgroundFeatures returned success.");
-            console.log("(Check DB/logs to confirm 'Google' job event and '72kg' weight were stored)");
+            console.log("(Check DB/logs to confirm 'Acme Corp' job event and '72kg' weight were stored)");
         } else {
             console.error("❌ processBackgroundFeatures returned failure:", result.error);
             process.exit(1);

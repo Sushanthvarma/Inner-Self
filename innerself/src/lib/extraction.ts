@@ -1,10 +1,21 @@
 // ============================================================
 // INNER SELF — Silent Extraction Pipeline
+// Uses centralized validators from validators.ts
 // ============================================================
 import { v4 as uuidv4 } from 'uuid';
 import { getServiceSupabase } from './supabase';
 import { extractFromEntry } from './ai';
 import { storeEmbedding, getRecentEntries, getPersonaSummary, findSimilarEntries } from './embeddings';
+import {
+    validateDate,
+    validateDateNullable,
+    validateLifeEvent,
+    validateSignificance,
+    validateCategory,
+    validateStringArray,
+    validatePerson,
+    isPromptLeakage,
+} from './validators';
 import type { ExtractionResult, RawEntry } from '@/types';
 
 export interface ProcessResult {
@@ -12,46 +23,6 @@ export interface ProcessResult {
     extraction: ExtractionResult;
     success: boolean;
     error?: string;
-}
-
-// BUG 7: Robust date validator — catches 'null', 'unknown', 'N/A' etc.
-// For health metrics: defaults to today (a measurement date is always "now" if unknown)
-function validateDate(raw: string | null | undefined): string {
-    if (!raw) return new Date().toISOString().split('T')[0];
-    const s = raw.trim().toLowerCase();
-    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
-        return new Date().toISOString().split('T')[0];
-    }
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
-        return raw.trim().substring(0, 10);
-    }
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-        return d.toISOString().split('T')[0];
-    }
-    return new Date().toISOString().split('T')[0];
-}
-
-// For LIFE EVENTS: returns null if date is unknown.
-// Per Glacier Doc: "NEVER default to today for historical events."
-function validateDateNullable(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const s = raw.trim().toLowerCase();
-    if (['null', 'unknown', 'n/a', 'na', 'none', 'undefined', ''].includes(s)) {
-        return null;
-    }
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
-        return raw.trim().substring(0, 10);
-    }
-    // Handle year-only: "2015" -> "2015-01-01"
-    if (/^\d{4}$/.test(raw.trim())) {
-        return raw.trim() + '-01-01';
-    }
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-        return d.toISOString().split('T')[0];
-    }
-    return null;
 }
 
 // ---- Full Processing Pipeline ----
@@ -410,39 +381,59 @@ export async function updatePeopleMap(
     }
 }
 
-// ---- Store Life Event (with dedup) ----
-async function storeLifeEvent(
-    event: {
-        title: string;
-        description: string;
-        significance: number;
-        category: string;
-        emotions: string[];
-        people_involved: string[];
+// ---- Store Life Event (with dedup + full validation) ----
+// EXPORTED: All routes must use this instead of direct DB inserts.
+export async function storeLifeEvent(
+    rawEvent: {
+        title?: string;
+        description?: string;
+        significance?: number;
+        category?: string;
+        emotions?: string[];
+        people_involved?: string[];
         event_date?: string;
     },
     sourceEntryId: string
 ): Promise<void> {
-    const supabase = getServiceSupabase();
-
-    // Dedup: Check if a life event with the same title already exists
-    const { data: existingEvent } = await supabase
-        .from('life_events_timeline')
-        .select('id')
-        .ilike('title', event.title)
-        .limit(1);
-
-    if (existingEvent && existingEvent.length > 0) {
-        console.log(`[LifeEvent] Duplicate detected ("${event.title}"), skipping insert.`);
+    // Validate through centralized validators — rejects garbage, leakage, bad dates
+    const event = validateLifeEvent(rawEvent);
+    if (!event) {
+        console.log(`[LifeEvent] Rejected by validator (title: "${rawEvent.title || 'empty'}")`);
         return;
     }
 
-    // Use nullable date — NEVER default to today for historical events
-    const eventDate = validateDateNullable(event.event_date);
+    const supabase = getServiceSupabase();
+
+    // Dedup: Check if a life event with the same or very similar title already exists
+    // Use fuzzy matching: exact ilike match OR similar prefix (first 40 chars)
+    const titlePrefix = event.title.substring(0, 40).toLowerCase();
+    const { data: existingEvents } = await supabase
+        .from('life_events_timeline')
+        .select('id, title')
+        .limit(50);
+
+    if (existingEvents && existingEvents.length > 0) {
+        const isDuplicate = existingEvents.some((existing: { title: string }) => {
+            const existingLower = existing.title.toLowerCase();
+            const newLower = event.title.toLowerCase();
+            // Exact match
+            if (existingLower === newLower) return true;
+            // Prefix match (first 40 chars)
+            if (existingLower.substring(0, 40) === titlePrefix) return true;
+            // Containment match (one contains the other)
+            if (existingLower.includes(newLower) || newLower.includes(existingLower)) return true;
+            return false;
+        });
+
+        if (isDuplicate) {
+            console.log(`[LifeEvent] Duplicate detected ("${event.title}"), skipping insert.`);
+            return;
+        }
+    }
 
     await supabase.from('life_events_timeline').insert({
         id: uuidv4(),
-        event_date: eventDate,
+        event_date: event.event_date,
         title: event.title,
         description: event.description,
         significance: event.significance,
@@ -451,7 +442,7 @@ async function storeLifeEvent(
         people_involved: event.people_involved,
         source_entry_ids: [sourceEntryId],
     });
-    console.log(`[LifeEvent] Created: "${event.title}" on ${eventDate || 'unknown date'}`);
+    console.log(`[LifeEvent] Created: "${event.title}" on ${event.event_date || 'unknown date'}`);
 }
 
 // ---- Store Insights (with dedup) ----
