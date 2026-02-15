@@ -1,81 +1,79 @@
 // ============================================================
-// INNER SELF — Transcribe API Route
-// Audio blob → Supabase Storage → OpenAI Whisper → transcript
+// INNER SELF — Process API Route
+// Brain dump → Claude extraction → embeddings → storage
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { getServiceSupabase } from '@/lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
+import { processEntry } from '@/lib/extraction';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
-
-let _openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-    if (!_openai) {
-        _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-    }
-    return _openai;
-}
 
 export async function POST(request: NextRequest) {
     try {
-        const formData = await request.formData();
-        const audioFile = formData.get('audio') as File | null;
+        const { text, source, audio_url, audio_duration_sec } = await request.json();
 
-        if (!audioFile) {
+        if (!text || text.trim().length === 0) {
             return NextResponse.json(
-                { error: 'No audio file provided' },
+                { error: 'No text provided' },
                 { status: 400 }
             );
         }
 
-        const supabase = getServiceSupabase();
-        const fileId = uuidv4();
-        const ext = audioFile.type.includes('webm') ? 'webm'
-            : audioFile.type.includes('mp4') ? 'mp4'
-                : audioFile.type.includes('ogg') ? 'ogg'
-                    : 'webm';
-
-        console.log(`[Transcribe] Processing audio: ${(audioFile.size / 1024).toFixed(1)}KB, type: ${audioFile.type}`);
-
-        // Note: User requested NO audio preservation. Skipping Supabase Storage upload.
-
-        // Step 2: Transcribe with Whisper API
-        console.log('[Transcribe] Sending to Whisper API...');
-        const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
-        const whisperFile = new File([audioBuffer], `recording.${ext}`, {
-            type: audioFile.type || 'audio/webm',
+        console.log(`[Process API] Processing entry: "${text.trim().substring(0, 60)}..." | source: ${source || 'text'}`);
+        const result = await processEntry(text.trim(), source || 'text', {
+            audio_url: audio_url || null,
+            audio_duration_sec: audio_duration_sec || null,
         });
 
-        const transcription = await getOpenAI().audio.transcriptions.create({
-            model: 'whisper-1',
-            file: whisperFile,
-            language: 'en', // English with Hinglish recognition
-            response_format: 'verbose_json',
-        });
-
-        const transcript = transcription.text?.trim() || '';
-        const durationSec = Math.round(transcription.duration || 0);
-
-        console.log(`[Transcribe] Done. Duration: ${durationSec}s, Text: "${transcript.substring(0, 80)}..."`);
-
-        if (!transcript) {
+        if (!result.success) {
+            console.error('[Process API] Processing failed:', result.error);
             return NextResponse.json(
-                { error: 'Whisper returned empty transcript' },
-                { status: 400 }
+                { error: result.error || 'Processing failed' },
+                { status: 500 }
             );
         }
 
+        const ext = result.extraction;
+        console.log('[Process API] Success! Title:', ext.title, '| Task:', ext.is_task);
+
+        // Return FULL extraction — every field the frontend or any tab might need
         return NextResponse.json({
-            transcript,
-            audio_url: null, // Explicitly null as we are not saving it
-            audio_duration_sec: durationSec,
+            success: true,
+            entryId: result.entryId,
+            // Core
+            title: ext.title,
+            category: ext.category,
+            content: ext.content,
+            // Emotions
+            mood_score: ext.mood_score,
+            surface_emotion: ext.surface_emotion,
+            deeper_emotion: ext.deeper_emotion,
+            core_need: ext.core_need,
+            triggers: ext.triggers,
+            // Psychology
+            defense_mechanism: ext.defense_mechanism,
+            self_talk_tone: ext.self_talk_tone,
+            energy_level: ext.energy_level,
+            cognitive_pattern: ext.cognitive_pattern,
+            beliefs_revealed: ext.beliefs_revealed,
+            avoidance_signal: ext.avoidance_signal,
+            growth_edge: ext.growth_edge,
+            identity_persona: ext.identity_persona,
+            body_signals: ext.body_signals,
+            // Tasks
+            is_task: ext.is_task,
+            task_status: ext.task_status,
+            task_due_date: ext.task_due_date,
+            // People
+            people_mentioned: ext.people_mentioned,
+            // AI
+            ai_response: ext.ai_response,
+            ai_persona: ext.ai_persona_used,
+            follow_up_question: ext.follow_up_question,
         });
     } catch (error) {
-        console.error('[Transcribe] Error:', error);
+        console.error('Process API error:', error);
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Transcription failed' },
+            { error: 'Internal server error' },
             { status: 500 }
         );
     }

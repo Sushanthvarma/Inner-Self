@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Fetch all entries with extracted entities
+        // Includes extended psychological fields for the new LogView
         const { data, error } = await supabase
             .from('raw_entries')
             .select(`
@@ -64,7 +65,10 @@ export async function GET(request: NextRequest) {
           id, category, title, content, mood_score,
           surface_emotion, deeper_emotion, energy_level,
           identity_persona, ai_response, ai_persona_used,
-          is_task, task_status, people_mentioned, beliefs_revealed
+          is_task, task_status, people_mentioned, beliefs_revealed,
+          core_need, triggers, defense_mechanism, self_talk_tone,
+          cognitive_pattern, avoidance_signal, growth_edge, body_signals,
+          follow_up_question
         ),
         health_metrics(
           id, metric_name, value, unit, status

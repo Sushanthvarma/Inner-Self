@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from 'react';
 
+interface MirrorMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
 export default function MirrorView() {
     const [question, setQuestion] = useState('');
     const [answer, setAnswer] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
     const [aiResponse, setAiResponse] = useState('');
+    const [conversationHistory, setConversationHistory] = useState<MirrorMessage[]>([]);
 
     useEffect(() => {
         fetchMirrorQuestion();
@@ -31,23 +37,75 @@ export default function MirrorView() {
         if (!answer.trim() || isProcessing) return;
 
         setIsProcessing(true);
+        const userMessage = `[Mirror asked: "${question}"]\n\nMy answer: ${answer}`;
+
         try {
-            // Process as brain dump with mirror context
-            const res = await fetch('/api/process', {
+            // Route through Chat API with MIRROR persona — this gives RAG context + data-backed challenge
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMessage,
+                    persona: 'mirror',
+                    conversationHistory: conversationHistory.slice(-6),
+                }),
+            });
+
+            const data = await res.json();
+            if (data.response) {
+                setAiResponse(data.response);
+                setConversationHistory(prev => [
+                    ...prev,
+                    { role: 'user', content: userMessage },
+                    { role: 'assistant', content: data.response },
+                ]);
+            }
+
+            // Also save the answer as a brain dump entry (fire-and-forget) so it feeds the pipeline
+            fetch('/api/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text: `[Mirror Question: ${question}]\n\nMy answer: ${answer}`,
                     source: 'text',
                 }),
+            }).catch(err => console.error('Mirror entry save failed:', err));
+
+        } catch (error) {
+            console.error('Mirror processing error:', error);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleFollowUp = async () => {
+        if (!aiResponse || isProcessing) return;
+
+        setIsProcessing(true);
+        const followUp = 'Go deeper. Challenge me more. What am I still avoiding?';
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: followUp,
+                    persona: 'mirror',
+                    conversationHistory: conversationHistory.slice(-8),
+                }),
             });
 
             const data = await res.json();
-            if (data.ai_response) {
-                setAiResponse(data.ai_response);
+            if (data.response) {
+                setAiResponse(data.response);
+                setConversationHistory(prev => [
+                    ...prev,
+                    { role: 'user', content: followUp },
+                    { role: 'assistant', content: data.response },
+                ]);
             }
         } catch (error) {
-            console.error('Mirror processing error:', error);
+            console.error('Mirror follow-up error:', error);
         } finally {
             setIsProcessing(false);
         }
@@ -56,6 +114,7 @@ export default function MirrorView() {
     const handleNewQuestion = () => {
         setAnswer('');
         setAiResponse('');
+        setConversationHistory([]);
         fetchMirrorQuestion();
     };
 
@@ -119,12 +178,21 @@ export default function MirrorView() {
                                     <span>🪞 The Mirror speaks:</span>
                                 </div>
                                 <p>{aiResponse}</p>
-                                <button
-                                    className="mirror-continue"
-                                    onClick={handleNewQuestion}
-                                >
-                                    Go deeper →
-                                </button>
+                                <div className="mirror-response-actions">
+                                    <button
+                                        className="mirror-continue"
+                                        onClick={handleFollowUp}
+                                        disabled={isProcessing}
+                                    >
+                                        {isProcessing ? 'Thinking...' : 'Push harder →'}
+                                    </button>
+                                    <button
+                                        className="mirror-continue"
+                                        onClick={handleNewQuestion}
+                                    >
+                                        New question
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </>

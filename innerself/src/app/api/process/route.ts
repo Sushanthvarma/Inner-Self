@@ -32,20 +32,43 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('[Process API] Success! Title:', result.extraction.title, '| Task:', result.extraction.is_task);
+        const ext = result.extraction;
+        console.log('[Process API] Success! Title:', ext.title, '| Task:', ext.is_task);
 
+        // Return FULL extraction — every field the frontend or any tab might need
         return NextResponse.json({
             success: true,
             entryId: result.entryId,
-            title: result.extraction.title,
-            category: result.extraction.category,
-            mood_score: result.extraction.mood_score,
-            ai_response: result.extraction.ai_response,
-            ai_persona: result.extraction.ai_persona_used,
-            follow_up_question: result.extraction.follow_up_question,
-            is_task: result.extraction.is_task,
-            surface_emotion: result.extraction.surface_emotion,
-            deeper_emotion: result.extraction.deeper_emotion,
+            // Core
+            title: ext.title,
+            category: ext.category,
+            content: ext.content,
+            // Emotions
+            mood_score: ext.mood_score,
+            surface_emotion: ext.surface_emotion,
+            deeper_emotion: ext.deeper_emotion,
+            core_need: ext.core_need,
+            triggers: ext.triggers,
+            // Psychology
+            defense_mechanism: ext.defense_mechanism,
+            self_talk_tone: ext.self_talk_tone,
+            energy_level: ext.energy_level,
+            cognitive_pattern: ext.cognitive_pattern,
+            beliefs_revealed: ext.beliefs_revealed,
+            avoidance_signal: ext.avoidance_signal,
+            growth_edge: ext.growth_edge,
+            identity_persona: ext.identity_persona,
+            body_signals: ext.body_signals,
+            // Tasks
+            is_task: ext.is_task,
+            task_status: ext.task_status,
+            task_due_date: ext.task_due_date,
+            // People
+            people_mentioned: ext.people_mentioned,
+            // AI
+            ai_response: ext.ai_response,
+            ai_persona: ext.ai_persona_used,
+            follow_up_question: ext.follow_up_question,
         });
     } catch (error) {
         console.error('Process API error:', error);
