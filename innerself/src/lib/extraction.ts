@@ -16,40 +16,46 @@ export interface ProcessResult {
 
 // ---- Full Processing Pipeline ----
 // text → save raw → extract → save entities → embed → update people → detect events
+// ---- Full Processing Pipeline ----
+// text → save raw → extract → save entities → embed → update people → detect events
 export async function processEntry(
     rawText: string,
     source: 'text' | 'voice',
     options?: {
         audio_url?: string | null;
         audio_duration_sec?: number | null;
+        existingEntryId?: string; // Support for re-processing
     }
 ): Promise<ProcessResult> {
     const supabase = getServiceSupabase();
-    const entryId = uuidv4();
+    // Use existing ID if provided, else generate new
+    const entryId = options?.existingEntryId || uuidv4();
+    const isUpdate = !!options?.existingEntryId;
 
     try {
-        // Step 0: Dedup check — reject duplicate text (ALL time, not just recent)
-        const { data: existing } = await supabase
-            .from('raw_entries')
-            .select('id')
-            .eq('raw_text', rawText)
-            .is('deleted_at', null)
-            .limit(1);
+        // Step 0: Dedup check — reject duplicate text (skip if updating)
+        if (!isUpdate) {
+            const { data: existing } = await supabase
+                .from('raw_entries')
+                .select('id')
+                .eq('raw_text', rawText)
+                .is('deleted_at', null)
+                .limit(1);
 
-        if (existing && existing.length > 0) {
-            console.log('[Pipeline] Duplicate text detected, skipping:', rawText.substring(0, 50));
-            return {
-                entryId: existing[0].id,
-                extraction: {} as ExtractionResult,
-                success: true,
-                error: 'Duplicate entry — already processed',
-            };
+            if (existing && existing.length > 0) {
+                console.log('[Pipeline] Duplicate text detected, skipping:', rawText.substring(0, 50));
+                return {
+                    entryId: existing[0].id,
+                    extraction: {} as ExtractionResult,
+                    success: true,
+                    error: 'Duplicate entry — already processed',
+                };
+            }
         }
 
-        // Step 1: Save raw entry (immutable)
-        console.log(`[Pipeline] Step 1: Saving raw entry ${entryId}...`);
+        // Step 1: Save or Update raw entry (immutable-ish)
+        console.log(`[Pipeline] Step 1: ${isUpdate ? 'Updating' : 'Saving'} raw entry ${entryId}...`);
         const rawEntryData: Record<string, unknown> = {
-            id: entryId,
             raw_text: rawText,
             source: source,
             input_metadata: {
@@ -58,17 +64,25 @@ export async function processEntry(
             },
         };
 
-        // Attach audio metadata if present (voice entries with Whisper)
-        if (options?.audio_url) {
-            rawEntryData.audio_url = options.audio_url;
-        }
-        if (options?.audio_duration_sec) {
-            rawEntryData.audio_duration_sec = options.audio_duration_sec;
-        }
+        if (options?.audio_url) rawEntryData.audio_url = options.audio_url;
+        if (options?.audio_duration_sec) rawEntryData.audio_duration_sec = options.audio_duration_sec;
 
-        const { error: rawError } = await supabase.from('raw_entries').insert(rawEntryData);
+        if (isUpdate) {
+            // Update existing entry
+            const { error: updateError } = await supabase
+                .from('raw_entries')
+                .update(rawEntryData)
+                .eq('id', entryId);
+            if (updateError) throw new Error(`Raw entry update failed: ${updateError.message}`);
 
-        if (rawError) throw new Error(`Raw entry save failed: ${rawError.message}`);
+            // Clean up old extracted entities to avoid duplicates
+            await supabase.from('extracted_entities').delete().eq('entry_id', entryId);
+        } else {
+            // Insert new entry
+            rawEntryData.id = entryId;
+            const { error: insertError } = await supabase.from('raw_entries').insert(rawEntryData);
+            if (insertError) throw new Error(`Raw entry save failed: ${insertError.message}`);
+        }
 
         // Step 2: Get context for Claude
         console.log('[Pipeline] Step 2: Fetching context...');

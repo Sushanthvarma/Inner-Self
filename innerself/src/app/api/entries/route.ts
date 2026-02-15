@@ -3,6 +3,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
+import { processEntry } from '@/lib/extraction';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,27 +121,35 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (raw_text !== undefined) {
-            // Update the raw entry text
-            const { error: rawErr } = await supabase
-                .from('raw_entries')
-                .update({ raw_text })
-                .eq('id', id);
-            if (rawErr) throw rawErr;
+            const shouldReprocess = body.reprocess_ai === true;
 
-            // Also update extracted entity title/content if provided
-            if (title !== undefined || content !== undefined) {
-                const updates: Record<string, unknown> = {};
-                if (title !== undefined) updates.title = title;
-                if (content !== undefined) updates.content = content;
+            if (shouldReprocess) {
+                // Full Re-Process: AI extraction, People Map, Beliefs, etc.
+                console.log(`[Entries API] Reprocessing entry ${id}...`);
+                await processEntry(raw_text, 'text', { existingEntryId: id });
+                return NextResponse.json({ success: true, reprocessed: true });
+            } else {
+                // Simple Text Update (No AI)
+                const { error: rawErr } = await supabase
+                    .from('raw_entries')
+                    .update({ raw_text })
+                    .eq('id', id);
+                if (rawErr) throw rawErr;
 
-                const { error: entErr } = await supabase
-                    .from('extracted_entities')
-                    .update(updates)
-                    .eq('entry_id', id);
-                if (entErr) console.error('Entity update error:', entErr);
+                // Also update extracted entity title/content if provided
+                if (title !== undefined || content !== undefined) {
+                    const updates: Record<string, unknown> = {};
+                    if (title !== undefined) updates.title = title;
+                    if (content !== undefined) updates.content = content;
+
+                    const { error: entErr } = await supabase
+                        .from('extracted_entities')
+                        .update(updates)
+                        .eq('entry_id', id);
+                    if (entErr) console.error('Entity update error:', entErr);
+                }
+                return NextResponse.json({ success: true });
             }
-
-            return NextResponse.json({ success: true });
         }
 
         return NextResponse.json({ error: 'No updates provided' }, { status: 400 });

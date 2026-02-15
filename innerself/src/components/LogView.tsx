@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface ExtractedEntity {
     id: string;
@@ -54,10 +55,52 @@ const SELF_TALK_INDICATOR: Record<string, { emoji: string; color: string }> = {
     compassionate: { emoji: '🟢', color: '#4ADE80' },
 };
 
+function MoodTrendChart({ entries }: { entries: LogEntry[] }) {
+    const data = [...entries].reverse()
+        .filter(e => e.extracted_entities?.[0]?.mood_score)
+        .map(e => ({
+            date: new Date(e.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+            mood: e.extracted_entities[0].mood_score,
+            title: e.extracted_entities[0].title
+        }));
+
+    if (data.length < 2) return null;
+
+    return (
+        <div className="mood-chart" style={{ height: '180px', marginBottom: '24px', background: 'rgba(30, 30, 46, 0.5)', borderRadius: '12px', padding: '16px', border: '1px solid #2A2A35' }}>
+            <h3 style={{ fontSize: '13px', marginBottom: '12px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mood Timeline</h3>
+            <ResponsiveContainer width="100%" height="85%">
+                <AreaChart data={data}>
+                    <defs>
+                        <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#818CF8" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#818CF8" stopOpacity={0} />
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} opacity={0.5} />
+                    <XAxis dataKey="date" stroke="#6B7280" fontSize={10} tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis domain={[0, 10]} hide />
+                    <Tooltip
+                        contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', color: '#F3F4F6' }}
+                        itemStyle={{ color: '#E5E7EB' }}
+                        labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                    />
+                    <Area type="monotone" dataKey="mood" stroke="#818CF8" fillOpacity={1} fill="url(#colorMood)" strokeWidth={2} activeDot={{ r: 4, fill: '#fff' }} />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
 export default function LogView() {
     const [entries, setEntries] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+
+    // Editing state
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         fetchEntries();
@@ -72,6 +115,45 @@ export default function LogView() {
             console.error('Failed to fetch entries:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleEditStart = (entry: LogEntry) => {
+        setEditingId(entry.id);
+        // Use raw_text for editing
+        setEditContent(entry.raw_text);
+        // Prevent card collapse when clicking edit
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditContent('');
+    };
+
+    const handleSave = async (reprocess: boolean) => {
+        if (!editingId) return;
+        setIsSaving(true);
+        try {
+            const res = await fetch('/api/entries', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editingId,
+                    raw_text: editContent,
+                    reprocess_ai: reprocess
+                }),
+            });
+
+            if (res.ok) {
+                // Refresh entries to show updates
+                await fetchEntries();
+                setEditingId(null);
+                setEditContent('');
+            }
+        } catch (error) {
+            console.error('Failed to save entry:', error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -120,10 +202,13 @@ export default function LogView() {
                 <span className="entry-count">{entries.length} entries</span>
             </div>
 
+            <MoodTrendChart entries={entries} />
+
             <div className="log-timeline">
                 {entries.map((entry) => {
                     const entity = entry.extracted_entities?.[0];
                     const isExpanded = expandedId === entry.id;
+                    const isEditing = editingId === entry.id;
                     const moodColor = MOOD_COLORS[entity?.mood_score || 5] || '#FBBF24';
                     const selfTalk = SELF_TALK_INDICATOR[entity?.self_talk_tone || 'neutral'];
 
@@ -132,7 +217,11 @@ export default function LogView() {
                             key={entry.id}
                             className={`log-card ${isExpanded ? 'expanded' : ''}`}
                             style={{ borderLeftColor: moodColor, borderLeftWidth: '4px', borderLeftStyle: 'solid' }}
-                            onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                            onClick={(e) => {
+                                // Don't collapse if clicking inside edit area or buttons
+                                if ((e.target as HTMLElement).closest('.edit-area, .log-card-actions')) return;
+                                setExpandedId(isExpanded ? null : entry.id);
+                            }}
                         >
                             <div className="log-card-header">
                                 <div className="log-card-left">
@@ -160,12 +249,73 @@ export default function LogView() {
                                 </div>
                             </div>
 
-                            <p className="log-card-content">
-                                {entity?.content || entry.raw_text}
-                            </p>
+                            {isEditing ? (
+                                <div className="edit-area" style={{ marginTop: '12px' }}>
+                                    <textarea
+                                        value={editContent}
+                                        onChange={(e) => setEditContent(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            minHeight: '120px',
+                                            background: '#16161F',
+                                            color: '#fff',
+                                            border: '1px solid #374151',
+                                            borderRadius: '8px',
+                                            padding: '12px',
+                                            fontSize: '14px',
+                                            marginBottom: '8px',
+                                            resize: 'vertical'
+                                        }}
+                                    />
+                                    <div className="edit-actions" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <button
+                                            onClick={handleCancelEdit}
+                                            disabled={isSaving}
+                                            style={{ padding: '6px 12px', borderRadius: '6px', background: 'transparent', color: '#9CA3AF', border: '1px solid #374151', fontSize: '12px' }}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={() => handleSave(false)}
+                                            disabled={isSaving}
+                                            style={{ padding: '6px 12px', borderRadius: '6px', background: '#374151', color: '#fff', border: 'none', fontSize: '12px' }}
+                                        >
+                                            Save Text Only
+                                        </button>
+                                        <button
+                                            onClick={() => handleSave(true)}
+                                            disabled={isSaving}
+                                            style={{ padding: '6px 12px', borderRadius: '6px', background: '#818CF8', color: '#fff', border: 'none', fontSize: '12px', fontWeight: 500 }}
+                                        >
+                                            {isSaving ? 'Processing...' : 'Save & Re-Analyze AI'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="log-card-content">
+                                    {entity?.content || entry.raw_text}
+                                </p>
+                            )}
 
-                            {isExpanded && entity && (
+                            {isExpanded && !isEditing && entity && (
                                 <div className="log-card-details">
+                                    <div className="log-card-actions" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                                        <button
+                                            onClick={() => handleEditStart(entry)}
+                                            style={{
+                                                fontSize: '12px',
+                                                color: '#818CF8',
+                                                background: 'rgba(129, 140, 248, 0.1)',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                border: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            ✏️ Edit & Update AI
+                                        </button>
+                                    </div>
+
                                     {/* Emotions Row */}
                                     <div className="detail-row">
                                         <span className="detail-label">Emotions</span>
